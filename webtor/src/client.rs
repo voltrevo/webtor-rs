@@ -12,9 +12,9 @@ use tor_proto::channel::ChannelBuilder;
 use http::Method;
 use tor_memquota::MemoryQuotaTracker;
 use tor_proto::memquota::{ChannelAccount, SpecificAccount};
-use tor_linkspec::{OwnedChanTargetBuilder, ChanTarget};
-use tor_llcrypto::pk::{ed25519::Ed25519Identity, rsa::RsaIdentity};
-use std::time::{Instant, SystemTime};
+use tor_linkspec::OwnedChanTargetBuilder;
+use tor_llcrypto::pk::rsa::RsaIdentity;
+use std::time::SystemTime;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -49,12 +49,12 @@ impl TorClient {
         let relay_manager_arc = Arc::new(RwLock::new(relay_manager));
         
         let directory_manager = Arc::new(DirectoryManager::new(relay_manager_arc.clone()));
-        let circuit_manager = CircuitManager::new(relay_manager_arc.clone(), channel.clone());
+        let circuit_manager = Arc::new(RwLock::new(CircuitManager::new(relay_manager_arc.clone(), channel.clone())));
         let http_client = TorHttpClient::new(circuit_manager.clone());
         
         let client = Self {
             options: options.clone(),
-            circuit_manager: Arc::new(RwLock::new(circuit_manager)),
+            circuit_manager,
             directory_manager,
             http_client: Arc::new(http_client),
             is_initialized: Arc::new(RwLock::new(false)),
@@ -217,7 +217,7 @@ impl TorClient {
         }
         
         // Clean up circuits
-        let mut circuit_manager = self.circuit_manager.write().await;
+        let circuit_manager = self.circuit_manager.write().await;
         if let Err(e) = circuit_manager.cleanup_circuits().await {
             warn!("Error during circuit cleanup: {}", e);
         }

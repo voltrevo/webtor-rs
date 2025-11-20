@@ -4,16 +4,17 @@ use crate::circuit::CircuitManager;
 use crate::error::{Result, TorError};
 use http::Method;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
 use tokio_rustls::TlsConnector;
 use tracing::{debug, info};
+use tokio::sync::RwLock;
 use url::Url;
 use futures::{AsyncReadExt as FuturesAsyncReadExt, AsyncWriteExt as FuturesAsyncWriteExt};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use rustls;
 use rustls_webpki;
+use std::sync::Arc;
 
 /// HTTP request configuration
 #[derive(Debug, Clone)]
@@ -72,12 +73,12 @@ impl<T: AsyncRead + AsyncWrite + Send + Unpin> AnyStream for T {}
 
 /// HTTP client that routes requests through Tor circuits
 pub struct TorHttpClient {
-    circuit_manager: CircuitManager,
+    circuit_manager: Arc<RwLock<CircuitManager>>,
     tls_connector: Arc<TlsConnector>,
 }
 
 impl TorHttpClient {
-    pub fn new(circuit_manager: CircuitManager) -> Self {
+    pub fn new(circuit_manager: Arc<RwLock<CircuitManager>>) -> Self {
         let mut root_cert_store = rustls::RootCertStore::empty();
         root_cert_store.extend(
             rustls_webpki::TLS_SERVER_ROOTS.iter().cloned(),
@@ -111,14 +112,15 @@ impl TorHttpClient {
         debug!("Target: {}:{} (HTTPS: {})", host, port, is_https);
         
         // Get a ready circuit
-        let circuit = self.circuit_manager.get_ready_circuit().await?;
+        let circuit_manager = self.circuit_manager.read().await;
+        let circuit = circuit_manager.get_ready_circuit().await?;
         
         // Get the internal tunnel
         let tunnel = {
             let mut circuit_write = circuit.write().await;
             circuit_write.update_last_used();
             circuit_write.internal_circuit.clone()
-                .ok_or_else(|| TorError::Internal("Circuit has no internal tunnel".to_string()))? 
+                .ok_or_else(|| TorError::Internal("Circuit has no internal tunnel".to_string()))?
         };
         
         // Begin stream
@@ -128,8 +130,7 @@ impl TorHttpClient {
             
         let mut boxed_stream: Box<dyn AnyStream> = if is_https {
             let server_name = rustls::pki_types::ServerName::try_from(host)
-                .map_err(|_| TorError::http_request("Invalid DNS name"))? 
-                .to_owned();
+                .map_err(|_| TorError::http_request("Invalid DNS name"))?;
 
             let tls_stream = self.tls_connector.connect(server_name, stream.compat()).await
                 .map_err(|e| TorError::Network(format!("TLS connect failed: {}", e)))?;
@@ -316,9 +317,8 @@ mod tests {
             create_test_relay("exit1", vec![flags::FAST, flags::STABLE, flags::EXIT]),
         ];
         
-        let relay_manager = Arc::new(RwLock::new(RelayManager::new(relays)));
-        let channel = Arc::new(RwLock::new(None));
-        let circuit_manager = CircuitManager::new(relay_manager, channel);
+        let relay_manager = RelayManager::new(relays);
+        let circuit_manager = Arc::new(RwLock::new(CircuitManager::new(Arc::new(RwLock::new(relay_manager)), Arc::new(RwLock::new(None)))));
         let http_client = TorHttpClient::new(circuit_manager);
         
         // This will fail because we don't have WASM WebSocket implementation

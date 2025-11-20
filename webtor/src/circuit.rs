@@ -5,7 +5,7 @@ use crate::relay::{Relay, RelayManager};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info, error};
 use tor_proto::{ClientTunnel, CellCount, FlowCtrlParameters};
 use tor_proto::circuit::CircParameters;
 use tor_proto::client::circuit::TimeoutEstimator;

@@ -3,9 +3,9 @@
 use crate::error::{Result, TorError};
 use crate::relay::{Relay, RelayManager};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn, error};
+use tracing::{info, warn, error};
 use tor_proto::channel::Channel;
 use tor_proto::client::circuit::TimeoutEstimator;
 use futures::{AsyncReadExt, AsyncWriteExt};
