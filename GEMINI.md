@@ -78,4 +78,13 @@ Access at: `http://localhost:8000`
     *   Added `make_circ_params` helper to construct default circuit parameters.
     *   Updated `Circuit` struct to hold `ClientTunnel`.
     *   Added dependencies: `tor-protover`, `tor-units`, `rand` to `webtor` and root workspace.
+    *   **PR Review Fixes**:
+        *   Addressed issue where bridge/first hop was missing from circuit relay list.
+        *   Added error logging for circuit reactor task.
+        *   Fixed one-time fetch to ensure channel establishment.
+        *   Renamed `create_initial_circuit` to `establish_channel` for clarity.
+        *   **Path Selection Fix**:
+            *   Updated `RelayCriteria` to support excluding specific relay fingerprints.
+            *   Updated `CircuitManager::create_circuit` to enforce distinct relays for each hop (Bridge != Middle != Exit).
+            *   Updated `RelayManager::select_relay` to randomize selection among top candidates instead of being deterministic.
 *   **Channel Integration**: Passed shared `Channel` from `TorClient` to `CircuitManager` to enable circuit creation on the established Snowflake channel.
