@@ -55,7 +55,6 @@ httparse = "1.10.1"
 tor-checkable = "0.36.0"
 tokio-rustls = "0.25"
 rustls = "0.22"
-rustls-webpki = "0.101"
 webpki-roots = "0.26"
 tokio-util = { version = "0.7", features = ["compat"] }
 

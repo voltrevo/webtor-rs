@@ -24,6 +24,94 @@ impl DirectoryManager {
     pub fn new(relay_manager: Arc<RwLock<RelayManager>>) -> Self {
         Self { relay_manager }
     }
+    
+    pub async fn fetch_and_process_consensus(&self, channel: Arc<Channel>) -> Result<()> {
+        let consensus_body = self.fetch_consensus_body(channel.clone()).await?;
+        
+        info!("Parsing full consensus");
+        let (_, _, unvalidated) = MdConsensus::parse(&consensus_body)
+            .map_err(|e| TorError::serialization(format!("Failed to parse consensus: {}", e)))?;
+        let consensus = unvalidated.check_valid_at(&SystemTime::now())
+            .map_err(|e| TorError::ConsensusFetch(format!("Consensus timeliness check failed: {}", e)))?;
+        
+        let inner_consensus = &consensus.consensus;
+        
+        let digests: Vec<[u8; 32]> = inner_consensus
+            .relays()
+            .iter()
+            .map(|r| *r.md_digest())
+            .collect();
+
+        info!("Got {} microdescriptor digests", digests.len());
+        
+        let microdescs_body = self.fetch_microdescriptors_body(channel, &digests).await?;
+        info!("Fetched microdescriptors body: {} bytes", microdescs_body.len());
+
+        let mut router_statuses = HashMap::new();
+        for router in inner_consensus.relays() {
+            router_statuses.insert(*router.md_digest(), router.clone());
+        }
+
+        let mut relays = Vec::new();
+        let reader = MicrodescReader::new(&microdescs_body, &AllowAnnotations::AnnotationsNotAllowed)?;
+        for microdesc in reader {
+            let microdesc = match microdesc {
+                Ok(md) => md.into_microdesc(),
+                Err(e) => {
+                    warn!("Failed to parse microdescriptor: {}", e);
+                    continue;
+                }
+            };
+            
+            if let Some(router) = router_statuses.get(microdesc.digest()) {
+                let nickname = router.nickname().to_string();
+                let fingerprint = hex::encode(router.rsa_identity().as_bytes());
+                
+                let address = if let Some(addr) = router.addrs().next() {
+                    addr.ip().to_string()
+                } else {
+                    continue;
+                };
+                
+                let or_port = router.addrs().next().map(|a| a.port()).unwrap_or(0);
+                
+                let mut flags = std::collections::HashSet::new();
+                if router.is_flagged_fast() { flags.insert("Fast".to_string()); }
+                if router.is_flagged_stable() { flags.insert("Stable".to_string()); }
+                if router.is_flagged_guard() { flags.insert("Guard".to_string()); }
+                if router.is_flagged_exit() { flags.insert("Exit".to_string()); }
+                if router.is_flagged_bad_exit() { flags.insert("BadExit".to_string()); }
+                if router.is_flagged_hsdir() { flags.insert("HSDir".to_string()); }
+                if router.is_flagged_v2dir() { flags.insert("V2Dir".to_string()); }
+
+                let ntor_onion_key = hex::encode(microdesc.ntor_key().as_bytes());
+                
+                let mut relay = Relay::new(
+                    fingerprint,
+                    nickname,
+                    address,
+                    or_port,
+                    flags,
+                    ntor_onion_key,
+                );
+
+                relay.ed25519_identity = Some(hex::encode(microdesc.ed25519_id().as_bytes()));
+                
+                relays.push(relay);
+            }
+        }
+        
+        let count = relays.len();
+        
+        {
+            let mut manager = self.relay_manager.write().await;
+            manager.update_relays(relays);
+        }
+        
+        info!("Updated RelayManager with {} relays", count);
+
+        Ok(())
+    }
 
     async fn fetch_consensus_body(&self, channel: Arc<Channel>) -> Result<String> {
         info!("Fetching consensus from bridge...");
@@ -90,99 +178,6 @@ impl DirectoryManager {
             
         let body = &response[body_start..];
         Ok(String::from_utf8_lossy(body).to_string())
-    }
-    
-    pub async fn fetch_and_process_consensus(&self, channel: Arc<Channel>) -> Result<()> {
-        let consensus_body = self.fetch_consensus_body(channel.clone()).await?;
-        
-        let (_, _, unvalidated) = MdConsensus::parse(&consensus_body)
-            .map_err(|e| TorError::serialization(format!("Failed to parse consensus: {}", e)))?;
-        
-        let consensus = match unvalidated.clone().check_valid_at(&SystemTime::now()) {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("Consensus timeliness check failed: {}. Proceeding anyway for bootstrapping.", e);
-                unvalidated.dangerously_assume_timely()
-            }
-        };
-        
-        let inner_consensus = &consensus.consensus;
-        
-        let digests: Vec<[u8; 32]> = inner_consensus
-            .relays()
-            .iter()
-            .map(|r| *r.md_digest())
-            .collect();
-
-        info!("Got {} microdescriptor digests", digests.len());
-        
-        let microdescs_body = self.fetch_microdescriptors_body(channel, &digests).await?;
-        info!("Fetched microdescriptors body: {} bytes", microdescs_body.len());
-
-        let mut router_statuses = HashMap::new();
-        for router in inner_consensus.relays() {
-            router_statuses.insert(*router.md_digest(), router);
-        }
-
-        let mut relays = Vec::new();
-        let reader = MicrodescReader::new(&microdescs_body, &AllowAnnotations::AnnotationsNotAllowed)?;
-        for microdesc in reader {
-            let microdesc = match microdesc {
-                Ok(md) => md.into_microdesc(),
-                Err(e) => {
-                    warn!("Failed to parse microdescriptor: {}", e);
-                    continue;
-                }
-            };
-            
-            if let Some(router) = router_statuses.get(microdesc.digest()) {
-                let nickname = router.nickname().to_string();
-                let fingerprint = hex::encode(router.rsa_identity().as_bytes());
-                
-                let address = if let Some(addr) = router.addrs().next() {
-                    addr.ip().to_string()
-                } else {
-                    continue;
-                };
-                
-                let or_port = router.addrs().next().map(|a| a.port()).unwrap_or(0);
-                
-                let mut flags = std::collections::HashSet::new();
-                if router.is_flagged_fast() { flags.insert("Fast".to_string()); }
-                if router.is_flagged_stable() { flags.insert("Stable".to_string()); }
-                if router.is_flagged_guard() { flags.insert("Guard".to_string()); }
-                if router.is_flagged_exit() { flags.insert("Exit".to_string()); }
-                if router.is_flagged_bad_exit() { flags.insert("BadExit".to_string()); }
-                if router.is_flagged_hsdir() { flags.insert("HSDir".to_string()); }
-                if router.is_flagged_v2dir() { flags.insert("V2Dir".to_string()); }
-
-                let ntor_onion_key = hex::encode(microdesc.ntor_key().as_bytes());
-                
-                let mut relay = Relay::new(
-                    fingerprint,
-                    nickname,
-                    address,
-                    or_port,
-                    flags,
-                    ntor_onion_key,
-                );
-
-                relay.ed25519_identity = Some(hex::encode(microdesc.ed25519_id().as_bytes()));
-                
-                relays.push(relay);
-            }
-        }
-        
-        let count = relays.len();
-        
-        {
-            let mut manager = self.relay_manager.write().await;
-            manager.update_relays(relays);
-        }
-        
-        info!("Updated RelayManager with {} relays", count);
-
-        Ok(())
     }
 
     async fn fetch_microdescriptors_body(&self, channel: Arc<Channel>, digests: &[[u8; 32]]) -> Result<String> {

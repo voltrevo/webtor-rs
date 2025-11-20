@@ -13,7 +13,7 @@ use url::Url;
 use futures::{AsyncReadExt as FuturesAsyncReadExt, AsyncWriteExt as FuturesAsyncWriteExt};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use rustls;
-
+use webpki_roots;
 use std::sync::Arc;
 
 /// HTTP request configuration
@@ -80,10 +80,6 @@ pub struct TorHttpClient {
 impl TorHttpClient {
     pub fn new(circuit_manager: Arc<RwLock<CircuitManager>>) -> Self {
         let mut root_cert_store = rustls::RootCertStore::empty();
-use webpki_roots;
-
-//...
-
         root_cert_store.extend(
             webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
         );
@@ -125,7 +121,7 @@ use webpki_roots;
             let mut circuit_write = circuit.write().await;
             circuit_write.update_last_used();
             circuit_write.internal_circuit.clone()
-                .ok_or_else(|| TorError::Internal("Circuit has no internal tunnel".to_string()))?
+                .ok_or_else(|| TorError::Internal("Circuit has no internal tunnel".to_string()))? 
         };
         
         // Begin stream
@@ -135,7 +131,7 @@ use webpki_roots;
             
         let mut boxed_stream: Box<dyn AnyStream> = if is_https {
             let server_name = rustls::pki_types::ServerName::try_from(host.as_str())
-                .map_err(|_| TorError::http_request("Invalid DNS name"))?
+                .map_err(|_| TorError::http_request("Invalid DNS name"))? 
                 .to_owned();
 
             let tls_stream = self.tls_connector.connect(server_name, stream.compat()).await
