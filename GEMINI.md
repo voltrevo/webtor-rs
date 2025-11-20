@@ -12,10 +12,10 @@ The project is a rewrite of the TypeScript-based `tor-hazae41` and is structured
 
 ### `webtor/` (Core Library)
 *   **`client.rs`**: Main entry point (`TorClient`) managing circuit lifecycles and requests.
-*   **`circuit.rs`**: Handles creation, maintenance, and graceful updates of Tor circuits.
+*   **`circuit.rs`**: Handles creation, maintenance, and graceful updates of Tor circuits. Now fully integrated with `arti` (using `ClientTunnel`).
 *   **`snowflake.rs`**: Implements WebSocket-based communication with Snowflake bridges.
 *   **`http.rs`**: Provides an HTTP client interface for making requests through Tor circuits.
-*   **`relay.rs`**: Logic for selecting guard, middle, and exit relays.
+*   **`relay.rs`**: Logic for selecting guard, middle, and exit relays. Supports `arti`'s `CircTarget` trait.
 
 ### `webtor-wasm/` (WASM Bindings)
 *   Exposes a Promise-based JavaScript API.
@@ -70,3 +70,12 @@ Access at: `http://localhost:8000`
 *   **Async Runtime**: `tokio` (for native/testing) and `wasm-bindgen-futures` (for web).
 *   **Error Handling**: Uses `thiserror` and `anyhow`.
 *   **Logging**: `tracing` ecosystem.
+
+## Recent Changes
+*   **Tor Circuit Creation**: Implemented full circuit creation using `arti`'s `ClientTunnel` API.
+    *   Updated `webtor/src/circuit.rs` to use `tor_proto::channel::Channel::new_tunnel` and `PendingClientTunnel::create_firsthop_fast`.
+    *   Updated `webtor/src/relay.rs` to implement `OwnedCircTarget` construction for relays.
+    *   Added `make_circ_params` helper to construct default circuit parameters.
+    *   Updated `Circuit` struct to hold `ClientTunnel`.
+    *   Added dependencies: `tor-protover`, `tor-units`, `rand` to `webtor` and root workspace.
+*   **Channel Integration**: Passed shared `Channel` from `TorClient` to `CircuitManager` to enable circuit creation on the established Snowflake channel.
