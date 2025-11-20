@@ -6,14 +6,14 @@ use http::Method;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
 use tokio_rustls::TlsConnector;
 use tracing::{debug, info};
 use url::Url;
 use futures::{AsyncReadExt as FuturesAsyncReadExt, AsyncWriteExt as FuturesAsyncWriteExt};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
-
+use rustls;
+use rustls_webpki;
 
 /// HTTP request configuration
 #[derive(Debug, Clone)]
@@ -66,6 +66,10 @@ impl HttpRequest {
     }
 }
 
+trait AnyStream: AsyncRead + AsyncWrite + Send + Unpin {}
+impl<T: AsyncRead + AsyncWrite + Send + Unpin> AnyStream for T {}
+
+
 /// HTTP client that routes requests through Tor circuits
 pub struct TorHttpClient {
     circuit_manager: CircuitManager,
@@ -94,25 +98,37 @@ impl TorHttpClient {
     /// Make an HTTP request through Tor
     pub async fn request(&self, request: HttpRequest) -> Result<HttpResponse> {
         info!("Making {} request to {} through Tor", request.method, request.url);
-
-        let host = request.url.host_str().ok_or_else(|| TorError::http_request("Invalid URL: no host"))?;
-        let port = request.url.port_or_known_default().ok_or_else(|| TorError::http_request("Invalid URL: no port"))?;
+        
+        // Parse URL to get host and port
+        let host = request.url.host_str()
+            .ok_or_else(|| TorError::http_request("Invalid URL: no host"))?;
+        
+        let port = request.url.port_or_known_default()
+            .ok_or_else(|| TorError::http_request("Invalid URL: no port"))?;
+        
         let is_https = request.url.scheme() == "https";
-
+        
         debug!("Target: {}:{} (HTTPS: {})", host, port, is_https);
-
+        
+        // Get a ready circuit
         let circuit = self.circuit_manager.get_ready_circuit().await?;
+        
+        // Get the internal tunnel
         let tunnel = {
             let mut circuit_write = circuit.write().await;
             circuit_write.update_last_used();
-            circuit_write.internal_circuit.clone().ok_or_else(|| TorError::Internal("Circuit has no internal tunnel".to_string()))?
+            circuit_write.internal_circuit.clone()
+                .ok_or_else(|| TorError::Internal("Circuit has no internal tunnel".to_string()))? 
         };
-
-        let stream = tunnel.begin_stream(host, port, None).await.map_err(|e| TorError::Network(format!("Failed to begin stream: {}", e)))?;
-
-        let mut boxed_stream: Box<dyn AsyncRead + AsyncWrite + Send + Unpin> = if is_https {
+        
+        // Begin stream
+        let stream = tunnel.begin_stream(host, port, None)
+            .await
+            .map_err(|e| TorError::Network(format!("Failed to begin stream: {}", e)))?;
+            
+        let mut boxed_stream: Box<dyn AnyStream> = if is_https {
             let server_name = rustls::pki_types::ServerName::try_from(host)
-                .map_err(|_| TorError::http_request("Invalid DNS name"))?
+                .map_err(|_| TorError::http_request("Invalid DNS name"))? 
                 .to_owned();
 
             let tls_stream = self.tls_connector.connect(server_name, stream.compat()).await
@@ -122,22 +138,23 @@ impl TorHttpClient {
             Box::new(stream.compat())
         };
 
+        // Construct HTTP request
         let path = request.url.path();
         let query = request.url.query().map(|q| format!("?{}", q)).unwrap_or_default();
         let target = format!("{}{}", path, query);
-
+        
         let mut headers = request.headers.clone();
         headers.entry("Host".to_string()).or_insert_with(|| host.to_string());
         headers.entry("Connection".to_string()).or_insert_with(|| "close".to_string());
         headers.entry("User-Agent".to_string()).or_insert_with(|| "webtor-rs/0.1.0".to_string());
-
+        
         let mut req_buf = Vec::new();
         req_buf.extend_from_slice(format!("{} {} HTTP/1.1\r\n", request.method, target).as_bytes());
-
+        
         for (key, value) in &headers {
             req_buf.extend_from_slice(format!("{}: {}\r\n", key, value).as_bytes());
         }
-
+        
         if let Some(body) = &request.body {
             req_buf.extend_from_slice(format!("Content-Length: {}\r\n", body.len()).as_bytes());
             req_buf.extend_from_slice(b"\r\n");
@@ -145,13 +162,18 @@ impl TorHttpClient {
         } else {
             req_buf.extend_from_slice(b"\r\n");
         }
-
-        boxed_stream.write_all(&req_buf).await.map_err(|e| TorError::Network(format!("Failed to write request: {}", e)))?;
-        boxed_stream.flush().await.map_err(|e| TorError::Network(format!("Failed to flush request: {}", e)))?;
-
+        
+        // Write request
+        boxed_stream.write_all(&req_buf).await
+            .map_err(|e| TorError::Network(format!("Failed to write request: {}", e)))?;
+        boxed_stream.flush().await
+            .map_err(|e| TorError::Network(format!("Failed to flush request: {}", e)))?;
+            
+        // Read response
         let mut response_buf = Vec::new();
-        boxed_stream.read_to_end(&mut response_buf).await.map_err(|e| TorError::Network(format!("Failed to read response: {}", e)))?;
-
+        boxed_stream.read_to_end(&mut response_buf).await
+            .map_err(|e| TorError::Network(format!("Failed to read response: {}", e)))?;
+            
         Self::parse_response(response_buf, request.url)
     }
     
@@ -241,7 +263,7 @@ mod tests {
     fn create_test_relay(fingerprint: &str, flags: Vec<&str>) -> Relay {
         Relay::new(
             fingerprint.to_string(),
-            format!("test_{}", fingerprint),
+            format!("test_{{}}", fingerprint),
             "127.0.0.1".to_string(),
             9001,
             flags.into_iter().map(String::from).collect(),
