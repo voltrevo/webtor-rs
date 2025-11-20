@@ -13,7 +13,7 @@ use url::Url;
 use futures::{AsyncReadExt as FuturesAsyncReadExt, AsyncWriteExt as FuturesAsyncWriteExt};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 use rustls;
-use rustls_webpki;
+
 use std::sync::Arc;
 
 /// HTTP request configuration
@@ -80,8 +80,12 @@ pub struct TorHttpClient {
 impl TorHttpClient {
     pub fn new(circuit_manager: Arc<RwLock<CircuitManager>>) -> Self {
         let mut root_cert_store = rustls::RootCertStore::empty();
+use webpki_roots;
+
+//...
+
         root_cert_store.extend(
-            rustls_webpki::TLS_SERVER_ROOTS.iter().cloned(),
+            webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
         );
 
         let config = rustls::ClientConfig::builder()
