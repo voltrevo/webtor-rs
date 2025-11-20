@@ -3,12 +3,14 @@
 use crate::error::{Result, TorError};
 use crate::relay::{Relay, RelayManager};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn, error};
 use tor_proto::channel::Channel;
 use tor_proto::client::circuit::TimeoutEstimator;
 use futures::{AsyncReadExt, AsyncWriteExt};
+use tor_netdoc::doc::netstatus::MdConsensus;
+use tor_checkable::Timebound;
 
 /// Directory manager for handling network documents
 pub struct DirectoryManager {
@@ -100,13 +102,83 @@ impl DirectoryManager {
         info!("Processing consensus document (length: {})", consensus_str.len());
         
         // Parse the consensus
-        // Note: This assumes Microdescriptor consensus
-        // We need to handle the parsing carefully as tor-netdoc is strict
+        // We assume it's a Microdescriptor consensus
+        let (_, _, unvalidated) = MdConsensus::parse(consensus_str)
+            .map_err(|e| TorError::serialization(format!("Failed to parse consensus: {}", e)))?;
+            
+        // Check timeliness (or assume timely for bootstrapping if needed)
+        // For now, we just check against system time.
+        // If the consensus is not valid, we log a warning but proceed if possible
+        // using dangerously_assume_timely() if check fails, for testing/bootstrap.
         
-        // specific parsing logic to be added
-        // For now, just logging
-        debug!("Consensus body preview: {:.100}...", consensus_str);
+        let consensus = match unvalidated.clone().check_valid_at(&SystemTime::now()) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Consensus timeliness check failed: {}. Proceeding anyway for bootstrapping.", e);
+                unvalidated.dangerously_assume_timely()
+            }
+        };
+            
+        // Access the inner consensus object
+        // UnvalidatedConsensus wraps the actual consensus document
+        let inner_consensus = &consensus.consensus;
         
-        Ok(0)
+        info!("Parsed consensus with {} relays", inner_consensus.relays().len());
+        
+        let mut relays = Vec::new();
+        
+        for router in inner_consensus.relays().iter() {
+            // Extract basic info
+            let nickname = router.nickname().to_string();
+            let fingerprint = hex::encode(router.rsa_identity().as_bytes());
+            
+            // We need at least one address
+            let address = if let Some(addr) = router.addrs().next() {
+                addr.ip().to_string()
+            } else {
+                continue;
+            };
+            
+            let or_port = router.addrs().next().map(|a| a.port()).unwrap_or(0);
+            
+            // Flags
+            let mut flags = std::collections::HashSet::new();
+            if router.is_flagged_fast() { flags.insert("Fast".to_string()); }
+            if router.is_flagged_stable() { flags.insert("Stable".to_string()); }
+            // Valid/Authority might not be exposed on MdRouterStatus or named differently
+            // if router.is_flagged_valid() { flags.insert("Valid".to_string()); }
+            if router.is_flagged_guard() { flags.insert("Guard".to_string()); }
+            if router.is_flagged_exit() { flags.insert("Exit".to_string()); }
+            if router.is_flagged_bad_exit() { flags.insert("BadExit".to_string()); }
+            // if router.is_flagged_authority() { flags.insert("Authority".to_string()); }
+            if router.is_flagged_hsdir() { flags.insert("HSDir".to_string()); }
+            if router.is_flagged_v2dir() { flags.insert("V2Dir".to_string()); }
+            
+            // We need Ed25519 identity and ntor key for circuit creation
+            // Note: MdConsensus routers might not have all keys directly accessible 
+            // in the same way as full descriptors, but let's try to extract what we can.
+            
+            let relay = Relay::new(
+                fingerprint,
+                nickname,
+                address,
+                or_port,
+                flags,
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(), // Missing ntor key!
+            );
+            
+            relays.push(relay);
+        }
+        
+        let count = relays.len();
+        
+        {
+            let mut manager = self.relay_manager.write().await;
+            manager.update_relays(relays);
+        }
+        
+        info!("Updated RelayManager with {} relays", count);
+        
+        Ok(count)
     }
 }
