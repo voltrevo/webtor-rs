@@ -578,14 +578,14 @@
                 emptyState.remove();
             }
 
-            // Enforce max log entries to prevent memory bloat
+            // Enforce max log entries to prevent memory bloat (remove oldest from bottom)
             while (output.children.length >= MAX_LOG_ENTRIES) {
-                output.removeChild(output.firstChild);
+                output.removeChild(output.lastChild);
             }
 
             const entry = createLogEntry(level, target, message);
-            output.appendChild(entry);
-            output.scrollTop = output.scrollHeight;
+            // New messages at top (prepend instead of append)
+            output.insertBefore(entry, output.firstChild);
         }
 
         // Global error handlers
