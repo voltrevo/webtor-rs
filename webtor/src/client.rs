@@ -52,6 +52,15 @@ impl TorClient {
         let relay_manager_arc = Arc::new(RwLock::new(relay_manager));
         
         let directory_manager = Arc::new(DirectoryManager::new(relay_manager_arc.clone()));
+        
+        // Load cached consensus to populate relay manager
+        // This is essential for WASM where we need relays before we can fetch fresh consensus
+        info!("Loading cached consensus...");
+        if let Err(e) = directory_manager.load_cached_consensus().await {
+            error!("Failed to load cached consensus: {}", e);
+            return Err(e);
+        }
+        
         let circuit_manager = Arc::new(RwLock::new(CircuitManager::new(relay_manager_arc.clone(), channel.clone())));
         let http_client = TorHttpClient::new(circuit_manager.clone());
         
