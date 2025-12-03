@@ -3,455 +3,661 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Webtor-rs Demo - Tor Client in Rust/WASM</title>
+    <title>Webtor-rs - Tor Client in Rust/WASM</title>
+    <link rel="icon" href="tor.svg" type="image/svg+xml">
     <style>
+        * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e8e8e8;
         }
-        
-        .container {
-            background: white;
-            border-radius: 8px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-        }
-        
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-        }
-        
-        .section {
-            margin-bottom: 30px;
-            padding: 20px;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-        }
-        
-        .section h3 {
-            margin-top: 0;
-            color: #444;
-        }
-        
-        .input-group {
-            margin-bottom: 15px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-            color: #555;
-        }
-        
-        input[type="text"], textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
-            box-sizing: border-box;
-        }
-        
-        input[type="text"]:focus, textarea:focus {
-            outline: none;
-            border-color: #007bff;
-            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
-        }
-        
-        button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        
-        button:hover:not(:disabled) {
-            background-color: #0056b3;
-        }
-        
-        button:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
-        
-        button.secondary {
-            background-color: #6c757d;
-        }
-        
-        button.secondary:hover:not(:disabled) {
-            background-color: #545b62;
-        }
-        
-        .status {
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            font-family: monospace;
-            font-size: 14px;
-        }
-        
-        .output {
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            margin-top: 10px;
-            min-height: 60px;
-            font-family: monospace;
-            font-size: 13px;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-        
-        .output.loading {
-            color: #0066cc;
-        }
-        
-        .output.success {
-            color: #28a745;
-        }
-        
-        .output.error {
-            color: #dc3545;
-        }
-        
-        .output.info {
-            color: #666666;
-        }
-        
-        .log-output {
-            width: 100%;
-            height: 200px;
-            font-family: monospace;
-            font-size: 12px;
-            resize: vertical;
-        }
-        
-        .request-grid {
+
+        .main-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: calc(100vh - 40px);
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             margin-bottom: 20px;
         }
-        
-        .request-item {
-            padding: 15px;
-            border: 1px solid #e0e0e0;
+
+        .logo {
+            width: 48px;
+            height: 48px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            background: linear-gradient(135deg, #9a4fd1, #7d33b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 13px;
+            margin: 4px 0 0 0;
+        }
+
+        .warning-banner {
+            background: rgba(255, 193, 7, 0.15);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            color: #ffc107;
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #9a4fd1;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-bar {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6c757d;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.ready { background: #28a745; }
+        .status-dot.loading { background: #ffc107; }
+        .status-dot.error { background: #dc3545; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: linear-gradient(135deg, #7d33b8, #9a4fd1);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(122, 51, 184, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        button.secondary:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: none;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 13px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #e8e8e8;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #9a4fd1;
+        }
+
+        select {
+            cursor: pointer;
+        }
+
+        select option {
+            background: #1a1a2e;
+            color: #e8e8e8;
+        }
+
+        .input-group {
+            margin-bottom: 14px;
+        }
+
+        .request-section {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .request-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            background: rgba(154, 79, 209, 0.2);
+            color: #9a4fd1;
+        }
+
+        .badge.isolated {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+
+        .output-box {
+            background: rgba(0, 0, 0, 0.4);
             border-radius: 6px;
+            padding: 12px;
+            margin-top: 12px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+            min-height: 60px;
+            max-height: 120px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #888;
         }
-        
-        .isolated-request {
-            background-color: #fff3cd;
-            border-color: #ffeaa7;
+
+        .output-box.success { color: #28a745; }
+        .output-box.error { color: #dc3545; }
+        .output-box.loading { color: #17a2b8; }
+
+        .log-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
-        
-        .warning {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
         }
-        
-        .features {
+
+        .log-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #888;
+            cursor: pointer;
+        }
+
+        .toggle-label input {
+            width: auto;
+        }
+
+        .log-output {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px;
+            overflow-y: auto;
+            min-height: 400px;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 2px;
+        }
+
+        .log-time { color: #666; }
+        .log-info { color: #28a745; }
+        .log-warn { color: #ffc107; }
+        .log-error { color: #dc3545; }
+        .log-debug { color: #6c757d; }
+
+        .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 16px;
         }
-        
-        .feature {
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            border-left: 4px solid #007bff;
+
+        .feature-card {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            border-left: 3px solid #9a4fd1;
         }
-        
-        .feature h4 {
-            margin-top: 0;
-            color: #007bff;
+
+        .feature-card h4 {
+            margin: 0 0 4px 0;
+            font-size: 13px;
+            color: #9a4fd1;
         }
-        
-        @media (max-width: 768px) {
-            .request-grid {
+
+        .feature-card p {
+            margin: 0;
+            font-size: 11px;
+            color: #888;
+        }
+
+        @media (max-width: 900px) {
+            .main-container {
                 grid-template-columns: 1fr;
             }
-            
-            .features {
-                grid-template-columns: 1fr;
+
+            .log-output {
+                min-height: 200px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🧅 Webtor-rs Demo</h1>
-        <p class="subtitle">Tor client implementation in Rust, compiled to WebAssembly for web browsers</p>
-        
-        <div class="warning">
-            <strong>⚠️ Use at Your Own Risk:</strong> This is experimental software. The underlying Tor implementation is experimental.
-        </div>
-        
-        <div class="features">
-            <div class="feature">
-                <h4>🔄 Persistent Circuits</h4>
-                <p>Reuses Tor circuits for better performance</p>
+    <div class="main-container">
+        <!-- Left Panel - Controls -->
+        <div class="panel">
+            <div class="header">
+                <img src="tor.svg" alt="Tor" class="logo">
+                <div>
+                    <h1>Webtor-rs</h1>
+                    <p class="subtitle">Tor client in Rust/WASM</p>
+                </div>
             </div>
-            <div class="feature">
-                <h4>🔃 Auto Updates</h4>
-                <p>Configurable circuit refresh with graceful transitions</p>
+
+            <div class="warning-banner">
+                <strong>Experimental:</strong> Use at your own risk. TLS 1.3 only.
             </div>
-            <div class="feature">
-                <h4>🌨️ Snowflake</h4>
-                <p>Uses Snowflake bridge for WebSocket-based access</p>
+
+            <div class="section">
+                <div class="section-title">Connection</div>
+                <div class="status-bar">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="status">Not initialized</span>
+                </div>
+                <div class="btn-group" style="margin-top: 12px;">
+                    <button id="openBtn">Open TorClient</button>
+                    <button id="closeBtn" class="secondary" disabled>Close</button>
+                    <button id="updateBtn" class="secondary" disabled>Refresh Circuit</button>
+                </div>
             </div>
-            <div class="feature">
-                <h4>🔒 Isolated Requests</h4>
-                <p>One-time circuits for maximum privacy</p>
-            </div>
-        </div>
-    </div>
-    
-    <div class="container">
-        <div class="section">
-            <h3>🔧 Configuration</h3>
-            <div class="input-group">
-                <label for="snowflakeUrl">Snowflake Bridge URL:</label>
-                <input type="text" id="snowflakeUrl" value="wss://snowflake.torproject.net/" placeholder="wss://snowflake.torproject.net/">
-            </div>
-            
-            <div>
-                <button id="openBtn">🔓 Open TorClient</button>
-                <button id="closeBtn" disabled>🛑 Close TorClient</button>
-                <button id="clearBtn" class="secondary">🗑️ Clear Output</button>
-            </div>
-            
-            <div class="status" id="status">
-                <strong>Circuit Status:</strong> Not initialized
-            </div>
-        </div>
-    </div>
-    
-    <div class="container">
-        <div class="section">
-            <h3>🌐 Persistent Requests (Circuit Reuse)</h3>
-            <p>These requests use the same persistent Tor circuit for better performance.</p>
-            
-            <div class="request-grid">
-                <div class="request-item">
-                    <h4>Request 1</h4>
-                    <div class="input-group">
-                        <label for="url1">URL:</label>
-                        <input type="text" id="url1" value="https://httpbin.org/ip" placeholder="https://example.com">
+
+            <div class="section">
+                <div class="section-title">Make Request</div>
+
+                <div class="request-section">
+                    <div class="request-header">
+                        <span class="request-title">Persistent Request</span>
+                        <span class="badge">Circuit Reuse</span>
                     </div>
-                    <button id="btn1">🌐 Make Request 1</button>
-                    <div class="output" id="output1">Ready to make request...</div>
-                </div>
-                
-                <div class="request-item">
-                    <h4>Request 2</h4>
+
                     <div class="input-group">
-                        <label for="url2">URL:</label>
-                        <input type="text" id="url2" value="https://httpbin.org/user-agent" placeholder="https://example.com">
+                        <label>Preset</label>
+                        <select id="presetSelect">
+                            <optgroup label="Test Endpoints">
+                                <option value="https://example.com/">example.com</option>
+                                <option value="https://check.torproject.org/">Tor Check</option>
+                                <option value="https://api.ipify.org?format=json">IP Check (ipify)</option>
+                            </optgroup>
+                            <optgroup label="Ethereum RPC">
+                                <option value="https://eth.llamarpc.com">Llama RPC</option>
+                                <option value="https://rpc.flashbots.net/fast?originId=webtor">Flashbots RPC</option>
+                                <option value="https://rpc.mevblocker.io">MEV Blocker RPC</option>
+                            </optgroup>
+                            <optgroup label="Custom">
+                                <option value="custom">Custom URL...</option>
+                            </optgroup>
+                        </select>
                     </div>
-                    <button id="btn2">🌐 Make Request 2</button>
-                    <div class="output" id="output2">Ready to make request...</div>
-                </div>
-                
-                <div class="request-item">
-                    <h4>Request 3</h4>
+
                     <div class="input-group">
-                        <label for="url3">URL:</label>
-                        <input type="text" id="url3" value="https://httpbin.org/headers" placeholder="https://example.com">
+                        <label>URL</label>
+                        <input type="text" id="url1" value="https://example.com/" placeholder="https://...">
                     </div>
-                    <button id="btn3">🌐 Make Request 3</button>
-                    <div class="output" id="output3">Ready to make request...</div>
+
+                    <button id="btn1" disabled>Send Request</button>
+                    <div class="output-box" id="output1">Ready...</div>
                 </div>
-                
-                <div class="request-item">
-                    <h4>Circuit Management</h4>
-                    <p>Manually trigger circuit updates and monitor status.</p>
-                    <button id="updateBtn">🔄 Trigger Circuit Update</button>
+
+                <div class="request-section">
+                    <div class="request-header">
+                        <span class="request-title">Isolated Request</span>
+                        <span class="badge isolated">New Circuit</span>
+                    </div>
+
+                    <div class="input-group">
+                        <label>URL</label>
+                        <input type="text" id="isolatedUrl" value="https://api.ipify.org?format=json" placeholder="https://...">
+                    </div>
+
+                    <button id="btnIsolated" disabled>Send Isolated</button>
+                    <div class="output-box" id="outputIsolated">Ready...</div>
+                </div>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h4>Snowflake</h4>
+                    <p>WebRTC-based transport</p>
+                </div>
+                <div class="feature-card">
+                    <h4>3-Hop Circuits</h4>
+                    <p>Guard, Middle, Exit</p>
+                </div>
+                <div class="feature-card">
+                    <h4>Auto Refresh</h4>
+                    <p>Circuit rotation</p>
+                </div>
+                <div class="feature-card">
+                    <h4>TLS 1.3</h4>
+                    <p>SubtleCrypto</p>
                 </div>
             </div>
         </div>
-    </div>
-    
-    <div class="container">
-        <div class="section isolated-request">
-            <h3>🔒 Isolated Request (Maximum Privacy)</h3>
-            <p>This request creates a temporary circuit that is disposed after completion.</p>
-            
-            <div class="input-group">
-                <label for="isolatedUrl">URL:</label>
-                <input type="text" id="isolatedUrl" value="https://httpbin.org/uuid" placeholder="https://example.com">
-            </div>
-            <button id="btnIsolated">🔒 Make Isolated Request</button>
-            <div class="output" id="outputIsolated">Ready to make isolated request...</div>
-        </div>
-    </div>
-    
-    <div class="container">
-        <div class="section">
-            <h3>📋 Connection Logs</h3>
-            <p>Detailed logging of all Tor operations and requests.</p>
-            <div style="margin-bottom: 10px;">
-                <label style="display: inline-flex; align-items: center; cursor: pointer;">
-                    <input type="checkbox" id="debugToggle" style="margin-right: 8px; cursor: pointer;">
-                    <span>🔧 Show Debug Logs</span>
-                </label>
-            </div>
-            <textarea id="output" class="log-output" readonly placeholder="Connection logs will appear here..."></textarea>
-        </div>
-    </div>
-    
-    <div class="container">
-        <div class="section">
-            <h3>📊 Performance Information</h3>
-            <div class="features">
-                <div class="feature">
-                    <h4>⏱️ Initial Connection</h4>
-                    <p>20-60 seconds (first time)</p>
-                </div>
-                <div class="feature">
-                    <h4>🚀 Subsequent Requests</h4>
-                    <p>1-5 seconds (circuit reuse)</p>
-                </div>
-                <div class="feature">
-                    <h4>🔄 Circuit Updates</h4>
-                    <p>Automatic every 2 minutes</p>
-                </div>
-                <div class="feature">
-                    <h4>🌐 Browser Support</h4>
-                    <p>Chrome, Firefox, Safari, Edge</p>
+
+        <!-- Right Panel - Logs -->
+        <div class="panel log-panel">
+            <div class="log-header">
+                <div class="section-title">Connection Logs</div>
+                <div class="log-controls">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="debugToggle">
+                        Debug
+                    </label>
+                    <button id="clearBtn" class="secondary" style="padding: 6px 12px;">Clear</button>
                 </div>
             </div>
+            <div class="log-output" id="output"></div>
         </div>
     </div>
-    
+
     <script type="module">
         import init, { DemoApp, setLogCallback, setDebugEnabled } from './pkg/webtor_demo.js';
-        
-        // Format log entry for the UI
-        function formatLogEntry(level, target, message) {
-            const timestamp = new Date().toLocaleTimeString('en-US');
-            let prefix = 'ℹ️';
-            let color = '';
-            
-            switch (level) {
-                case 'ERROR':
-                    prefix = '❌';
-                    color = 'color: #dc3545;';
-                    break;
-                case 'WARN':
-                    prefix = '⚠️';
-                    color = 'color: #ffc107;';
-                    break;
-                case 'INFO':
-                    prefix = '✅';
-                    color = 'color: #28a745;';
-                    break;
-                case 'DEBUG':
-                    prefix = '🔧';
-                    color = 'color: #6c757d;';
-                    break;
-                case 'TRACE':
-                    prefix = '🔍';
-                    color = 'color: #adb5bd;';
-                    break;
+
+        // Known TLS 1.2 only sites
+        const TLS12_SITES = ['httpbin.org', 'httpbin.com'];
+
+        function isTls12Site(url) {
+            try {
+                const hostname = new URL(url).hostname;
+                return TLS12_SITES.some(site => hostname.includes(site));
+            } catch {
+                return false;
             }
-            
-            // Shorten target for display
-            const shortTarget = target.split('::').pop() || target;
-            return `[${timestamp}] ${prefix} [${shortTarget}] ${message}\n`;
         }
-        
-        // Log callback that forwards tracing logs to the UI
+
+        function formatTlsError(url, errorMessage) {
+            if (errorMessage.includes('close_notify') || errorMessage.includes('TLS handshake failed')) {
+                const hostname = new URL(url).hostname;
+                return `TLS Error: ${hostname} requires TLS 1.2 which is not supported.\n\nWebtor-rs only supports TLS 1.3. Try a different site like example.com, google.com, or cloudflare.com.`;
+            }
+            return errorMessage;
+        }
+
+        function formatLogEntry(level, target, message) {
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const shortTarget = target.split('::').pop() || target;
+
+            let levelClass = 'log-info';
+            let prefix = 'INFO';
+            switch (level) {
+                case 'ERROR': levelClass = 'log-error'; prefix = 'ERR '; break;
+                case 'WARN': levelClass = 'log-warn'; prefix = 'WARN'; break;
+                case 'DEBUG': levelClass = 'log-debug'; prefix = 'DBG '; break;
+                case 'TRACE': levelClass = 'log-debug'; prefix = 'TRC '; break;
+            }
+
+            return `<span class="log-time">[${time}]</span> <span class="${levelClass}">${prefix}</span> <span style="color:#aaa">[${shortTarget}]</span> ${message}`;
+        }
+
         function logCallback(level, target, message) {
             const output = document.getElementById('output');
             if (output) {
-                const entry = formatLogEntry(level, target, message);
-                output.value += entry;
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = formatLogEntry(level, target, message);
+                output.appendChild(entry);
                 output.scrollTop = output.scrollHeight;
             }
         }
-        
+
         async function run() {
-            console.log('Loading Webtor Demo...');
-            
-            try {
-                // Initialize the WASM module
-                await init();
-                console.log('WASM module loaded successfully');
-                
-                // Set up log callback to forward tracing logs to UI
-                setLogCallback(logCallback);
-                
-                // Set up debug toggle
-                const debugToggle = document.getElementById('debugToggle');
-                if (debugToggle) {
-                    debugToggle.addEventListener('change', (e) => {
-                        setDebugEnabled(e.target.checked);
-                        const output = document.getElementById('output');
-                        if (output) {
-                            const timestamp = new Date().toLocaleTimeString('en-US');
-                            output.value += `[${timestamp}] ℹ️ Debug logging ${e.target.checked ? 'enabled' : 'disabled'}\n`;
-                            output.scrollTop = output.scrollHeight;
-                        }
-                    });
+            const statusEl = document.getElementById('status');
+            const statusDot = document.getElementById('statusDot');
+            const openBtn = document.getElementById('openBtn');
+            const closeBtn = document.getElementById('closeBtn');
+            const updateBtn = document.getElementById('updateBtn');
+            const btn1 = document.getElementById('btn1');
+            const btnIsolated = document.getElementById('btnIsolated');
+            const presetSelect = document.getElementById('presetSelect');
+            const url1Input = document.getElementById('url1');
+            const output1 = document.getElementById('output1');
+            const clearBtn = document.getElementById('clearBtn');
+            const debugToggle = document.getElementById('debugToggle');
+
+            // Preset selection handler
+            presetSelect.addEventListener('change', () => {
+                const value = presetSelect.value;
+                if (value !== 'custom') {
+                    url1Input.value = value;
                 }
-                
-                // Create and initialize the demo app
-                const app = new DemoApp();
-                await app.initUI();
-                console.log('Demo app initialized successfully');
-                
-                // Make app globally available for debugging
-                window.demoApp = app;
-                
-                console.log('Webtor Demo ready!');
+            });
+
+            // Clear logs
+            clearBtn.addEventListener('click', () => {
+                document.getElementById('output').innerHTML = '';
+            });
+
+            try {
+                await init();
+                logCallback('INFO', 'demo', 'WASM module loaded');
+
+                setLogCallback(logCallback);
+
+                debugToggle.addEventListener('change', (e) => {
+                    setDebugEnabled(e.target.checked);
+                    logCallback('INFO', 'demo', `Debug logging ${e.target.checked ? 'enabled' : 'disabled'}`);
+                });
+
+                let app = null;
+
+                openBtn.addEventListener('click', async () => {
+                    openBtn.disabled = true;
+                    statusEl.textContent = 'Connecting...';
+                    statusDot.className = 'status-dot loading';
+
+                    try {
+                        app = new DemoApp();
+
+                        // Set up status callback
+                        app.setStatusCallback((status) => {
+                            statusEl.textContent = status;
+                            if (status.includes('Ready')) {
+                                statusDot.className = 'status-dot ready';
+                                btn1.disabled = false;
+                                btnIsolated.disabled = false;
+                                updateBtn.disabled = false;
+                            } else if (status.includes('Error') || status.includes('Failed')) {
+                                statusDot.className = 'status-dot error';
+                            } else {
+                                statusDot.className = 'status-dot loading';
+                            }
+                        });
+
+                        await app.open();
+                        closeBtn.disabled = false;
+
+                    } catch (e) {
+                        statusEl.textContent = 'Error: ' + e.message;
+                        statusDot.className = 'status-dot error';
+                        openBtn.disabled = false;
+                    }
+                });
+
+                closeBtn.addEventListener('click', async () => {
+                    if (app) {
+                        await app.close();
+                        app = null;
+                    }
+                    statusEl.textContent = 'Not initialized';
+                    statusDot.className = 'status-dot';
+                    openBtn.disabled = false;
+                    closeBtn.disabled = true;
+                    updateBtn.disabled = true;
+                    btn1.disabled = true;
+                    btnIsolated.disabled = true;
+                });
+
+                updateBtn.addEventListener('click', async () => {
+                    if (app) {
+                        updateBtn.disabled = true;
+                        try {
+                            await app.triggerCircuitUpdate();
+                        } catch (e) {
+                            logCallback('ERROR', 'demo', 'Circuit update failed: ' + e.message);
+                        }
+                        updateBtn.disabled = false;
+                    }
+                });
+
+                btn1.addEventListener('click', async () => {
+                    const url = url1Input.value;
+
+                    // Check for TLS 1.2 sites first
+                    if (isTls12Site(url)) {
+                        output1.className = 'output-box error';
+                        output1.textContent = `This site (${new URL(url).hostname}) only supports TLS 1.2.\n\nWebtor-rs requires TLS 1.3. Try: example.com, google.com, cloudflare.com`;
+                        return;
+                    }
+
+                    output1.className = 'output-box loading';
+                    output1.textContent = 'Making request...';
+                    btn1.disabled = true;
+
+                    try {
+                        const response = await app.get(url);
+                        output1.className = 'output-box success';
+                        output1.textContent = response.substring(0, 500);
+                    } catch (e) {
+                        output1.className = 'output-box error';
+                        output1.textContent = formatTlsError(url, e.message);
+                    }
+                    btn1.disabled = false;
+                });
+
+                btnIsolated.addEventListener('click', async () => {
+                    const url = document.getElementById('isolatedUrl').value;
+                    const outputIsolated = document.getElementById('outputIsolated');
+
+                    if (isTls12Site(url)) {
+                        outputIsolated.className = 'output-box error';
+                        outputIsolated.textContent = `This site only supports TLS 1.2.\n\nWebtor-rs requires TLS 1.3.`;
+                        return;
+                    }
+
+                    outputIsolated.className = 'output-box loading';
+                    outputIsolated.textContent = 'Creating isolated circuit...';
+                    btnIsolated.disabled = true;
+
+                    try {
+                        const response = await app.getIsolated(url);
+                        outputIsolated.className = 'output-box success';
+                        outputIsolated.textContent = response.substring(0, 500);
+                    } catch (e) {
+                        outputIsolated.className = 'output-box error';
+                        outputIsolated.textContent = formatTlsError(url, e.message);
+                    }
+                    btnIsolated.disabled = false;
+                });
+
+                logCallback('INFO', 'demo', 'Demo ready - click "Open TorClient" to connect');
+
             } catch (error) {
-                console.error('Failed to initialize Webtor Demo:', error);
-                
-                // Show error to user
-                const errorDiv = document.createElement('div');
-                errorDiv.style.cssText = `
-                    background-color: #f8d7da;
-                    border: 1px solid #f5c6cb;
-                    color: #721c24;
-                    padding: 15px;
-                    border-radius: 4px;
-                    margin: 20px;
-                    font-family: monospace;
-                `;
-                errorDiv.innerHTML = `
-                    <strong>❌ Failed to initialize Webtor Demo</strong><br>
-                    Error: ${error.message}<br>
-                    <br>
-                    Please check the browser console for more details.
-                `;
-                document.body.insertBefore(errorDiv, document.body.firstChild);
+                console.error('Failed to initialize:', error);
+                statusEl.textContent = 'Failed to load WASM';
+                statusDot.className = 'status-dot error';
             }
         }
-        
-        // Run when the page loads
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', run);
         } else {
