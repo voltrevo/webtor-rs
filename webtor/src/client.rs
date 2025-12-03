@@ -224,8 +224,6 @@ impl TorClient {
         "Ready".to_string()
     }
     
-<<<<<<< HEAD
-=======
     /// Refresh the relay list from the Tor network consensus
     /// This should be called periodically (consensus updates every ~1 hour)
     pub async fn refresh_consensus(&self) -> Result<usize> {
@@ -271,7 +269,6 @@ impl TorClient {
         Ok(())
     }
     
->>>>>>> e5f937e (feat: Add Snowflake WebRTC and WebTunnel transports)
     /// Close the Tor client and clean up resources
     pub async fn close(&self) {
         info!("Closing Tor client");
