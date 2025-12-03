@@ -1,3 +1,4 @@
 target/
 **/*.rs.bk
-vendor/tor-hazae41/
+vendor/
+node_modules/
