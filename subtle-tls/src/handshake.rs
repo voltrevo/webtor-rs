@@ -224,10 +224,11 @@ impl HandshakeState {
     }
 
     fn build_alpn_extension(&self) -> Vec<u8> {
-        // ALPN protocol list - advertise both h2 and http/1.1
-        // Some servers (like httpbin.org) require seeing h2 in the list
+        // ALPN protocol list - only advertise http/1.1
+        // We don't support HTTP/2, so advertising h2 causes servers to send
+        // HTTP/2 binary frames that we can't parse.
         // Format: length(2) + [ length(1) + protocol_name ]*
-        let protocols: &[&[u8]] = &[b"h2", b"http/1.1"];
+        let protocols: &[&[u8]] = &[b"http/1.1"];
         let mut ext = Vec::new();
 
         // Calculate total list length
