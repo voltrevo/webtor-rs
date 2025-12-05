@@ -536,7 +536,7 @@ mod tests {
     fn create_test_relay(fingerprint: &str, flags: Vec<&str>) -> Relay {
         Relay::new(
             fingerprint.to_string(),
-            format!("test_{{}}", fingerprint),
+            format!("test_{}", fingerprint),
             "127.0.0.1".to_string(),
             9001,
             flags.into_iter().map(String::from).collect(),

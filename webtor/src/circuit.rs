@@ -111,7 +111,7 @@ impl Circuit {
 }
 
 // Helper to create default circuit parameters
-pub(crate) fn make_circ_params() -> Result<CircParameters> {
+pub fn make_circ_params() -> Result<CircParameters> {
     // 1. Fixed Window Params (Fallback)
     let fixed_window_params = FixedWindowParamsBuilder::default()
         .circ_window_start(1000)
