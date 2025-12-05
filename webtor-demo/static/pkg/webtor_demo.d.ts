@@ -189,6 +189,7 @@ export interface InitOutput {
   readonly jshttpresponse_text: (a: number) => [number, number, number, number];
   readonly jshttpresponse_url: (a: number) => [number, number];
   readonly setDebugEnabled: (a: number) => void;
+  readonly setLogCallback: (a: any) => void;
   readonly test_wasm: () => [number, number];
   readonly torclient_close: (a: number) => any;
   readonly torclient_close_rust: (a: number) => any;
@@ -215,14 +216,11 @@ export interface InitOutput {
   readonly torclientoptions_withCircuitUpdateInterval: (a: number, b: number) => number;
   readonly torclientoptions_withConnectionTimeout: (a: number, b: number) => number;
   readonly torclientoptions_withCreateCircuitEarly: (a: number, b: number) => number;
-  readonly setLogCallback: (a: any) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__hc8336e0ca3973277: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen__closure__destroy__h425dac40a0834752: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__h15fcc68dda9f98b6: (a: number, b: number) => void;
-  readonly wasm_bindgen__closure__destroy__h03f628fb5c1af182: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__h32d5e12558544916: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen__closure__destroy__hf76ded83d5f84246: (a: number, b: number) => void;
-  readonly wasm_bindgen__convert__closures_____invoke__hd0509b06bbeda2ff: (a: number, b: number, c: any, d: any) => void;
+  readonly wasm_bindgen__convert__closures_____invoke__h1938ee876f64535e: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen__closure__destroy__h23fe7ac0cfc44dfa: (a: number, b: number) => void;
+  readonly wasm_bindgen__closure__destroy__hbc08ba878c1d46c2: (a: number, b: number) => void;
+  readonly wasm_bindgen__convert__closures_____invoke__ha36ec23b984aa1d6: (a: number, b: number) => void;
+  readonly wasm_bindgen__convert__closures_____invoke__h3add26ca79024035: (a: number, b: number, c: any, d: any) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_exn_store: (a: number) => void;

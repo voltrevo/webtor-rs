@@ -242,7 +242,7 @@ Adding TLS 1.2 support requires implementing different key exchange and cipher s
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| WASM Bundle | ~2-3 MB | Compressed |
+| WASM Bundle | ~2.7 MB uncompressed, ~0.94 MB gzipped | Optimized with wasm-opt |
 | Initial Load | 2-5 sec | WASM compilation |
 | Consensus Fetch | 5-15 sec | First time only |
 | Circuit Creation | 20-60 sec | 3-hop with handshakes |
