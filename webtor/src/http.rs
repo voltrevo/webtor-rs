@@ -310,33 +310,70 @@ impl TorHttpClient {
     }
 }
 
-/// Execute an HTTP request over a TLS stream in WASM using async methods
+/// Trait for TLS streams that support async read/write operations
 #[cfg(target_arch = "wasm32")]
-async fn execute_http_request_wasm<S>(
-    tls_stream: &mut subtle_tls::TlsStream<S>,
-    request_bytes: &[u8],
-) -> Result<Vec<u8>>
+#[async_trait::async_trait(?Send)]
+trait WasmTlsStream {
+    async fn tls_write(&mut self, buf: &[u8]) -> std::io::Result<usize>;
+    async fn tls_flush(&mut self) -> std::io::Result<()>;
+    async fn tls_read(&mut self, buf: &mut [u8]) -> std::io::Result<usize>;
+}
+
+#[cfg(target_arch = "wasm32")]
+#[async_trait::async_trait(?Send)]
+impl<S> WasmTlsStream for subtle_tls::TlsStream<S>
 where
     S: futures::io::AsyncRead + futures::io::AsyncWrite + Unpin,
 {
-    // Write the request
-    tls_stream.write(request_bytes).await
+    async fn tls_write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.write(buf).await
+    }
+    async fn tls_flush(&mut self) -> std::io::Result<()> {
+        self.flush().await
+    }
+    async fn tls_read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.read(buf).await
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[async_trait::async_trait(?Send)]
+impl<S> WasmTlsStream for subtle_tls::TlsStream12<S>
+where
+    S: futures::io::AsyncRead + futures::io::AsyncWrite + Unpin,
+{
+    async fn tls_write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.write(buf).await
+    }
+    async fn tls_flush(&mut self) -> std::io::Result<()> {
+        self.flush().await
+    }
+    async fn tls_read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.read(buf).await
+    }
+}
+
+/// Execute an HTTP request over a TLS stream in WASM using async methods
+#[cfg(target_arch = "wasm32")]
+async fn execute_http_request_wasm<T: WasmTlsStream>(
+    tls_stream: &mut T,
+    request_bytes: &[u8],
+) -> Result<Vec<u8>> {
+    tls_stream.tls_write(request_bytes).await
         .map_err(|e| TorError::http_request(format!("Failed to write request: {}", e)))?;
-    tls_stream.flush().await
+    tls_stream.tls_flush().await
         .map_err(|e| TorError::http_request(format!("Failed to flush request: {}", e)))?;
     
-    // Read the response
     let mut response_bytes = Vec::new();
     let mut buf = [0u8; 8192];
     
     loop {
-        match tls_stream.read(&mut buf).await {
-            Ok(0) => break, // EOF
+        match tls_stream.tls_read(&mut buf).await {
+            Ok(0) => break,
             Ok(n) => {
                 response_bytes.extend_from_slice(&buf[..n]);
                 debug!("Read {} bytes (total: {})", n, response_bytes.len());
                 
-                // Limit response size to 1MB for safety
                 if response_bytes.len() > 1024 * 1024 {
                     warn!("Response exceeds 1MB limit, truncating");
                     break;
@@ -355,7 +392,7 @@ where
     Ok(response_bytes)
 }
 
-/// Execute an HTTP request over a TLS 1.2 stream in WASM using async methods
+/// Wrapper for TLS 1.2 streams to use with execute_http_request_wasm
 #[cfg(target_arch = "wasm32")]
 async fn execute_http_request_wasm_tls12<S>(
     tls_stream: &mut subtle_tls::TlsStream12<S>,
@@ -364,40 +401,7 @@ async fn execute_http_request_wasm_tls12<S>(
 where
     S: futures::io::AsyncRead + futures::io::AsyncWrite + Unpin,
 {
-    // Write the request
-    tls_stream.write(request_bytes).await
-        .map_err(|e| TorError::http_request(format!("Failed to write request: {}", e)))?;
-    tls_stream.flush().await
-        .map_err(|e| TorError::http_request(format!("Failed to flush request: {}", e)))?;
-    
-    // Read the response
-    let mut response_bytes = Vec::new();
-    let mut buf = [0u8; 8192];
-    
-    loop {
-        match tls_stream.read(&mut buf).await {
-            Ok(0) => break, // EOF
-            Ok(n) => {
-                response_bytes.extend_from_slice(&buf[..n]);
-                debug!("Read {} bytes (total: {})", n, response_bytes.len());
-                
-                // Limit response size to 1MB for safety
-                if response_bytes.len() > 1024 * 1024 {
-                    warn!("Response exceeds 1MB limit, truncating");
-                    break;
-                }
-            }
-            Err(e) => {
-                if response_bytes.is_empty() {
-                    return Err(TorError::http_request(format!("Failed to read response: {}", e)));
-                }
-                debug!("Read ended with error (may be normal close): {}", e);
-                break;
-            }
-        }
-    }
-    
-    Ok(response_bytes)
+    execute_http_request_wasm(tls_stream, request_bytes).await
 }
 
 /// Execute an HTTP request over a stream and return the response bytes

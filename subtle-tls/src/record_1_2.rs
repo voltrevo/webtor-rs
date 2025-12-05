@@ -8,6 +8,7 @@ use crate::error::{Result, TlsError};
 use crate::handshake_1_2::{
     CipherSuiteParams, TLS_VERSION_1_2,
     TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
 };
 use crate::prf;
 use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -44,6 +45,7 @@ enum CipherState {
         mac_key: Vec<u8>,
         sequence: u64,
         mac_len: usize,
+        use_sha1: bool, // true for SHA-1 cipher suites (0xC013, 0xC014)
     },
 }
 
@@ -93,11 +95,16 @@ impl RecordLayer12 {
             } else {
                 AesCbc::new_256(key).await?
             };
+            let use_sha1 = matches!(
+                self.cipher_suite,
+                TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA | TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+            );
             CipherState::Cbc {
                 cipher,
                 mac_key: mac_key.to_vec(),
                 sequence: 0,
                 mac_len: params.mac_len,
+                use_sha1,
             }
         };
 
@@ -133,11 +140,16 @@ impl RecordLayer12 {
             } else {
                 AesCbc::new_256(key).await?
             };
+            let use_sha1 = matches!(
+                self.cipher_suite,
+                TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA | TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+            );
             CipherState::Cbc {
                 cipher,
                 mac_key: mac_key.to_vec(),
                 sequence: 0,
                 mac_len: params.mac_len,
+                use_sha1,
             }
         };
 
@@ -216,7 +228,7 @@ impl RecordLayer12 {
 
                 Ok(plaintext)
             }
-            CipherState::Cbc { cipher: cbc, mac_key, sequence, mac_len } => {
+            CipherState::Cbc { cipher: cbc, mac_key, sequence, mac_len, use_sha1 } => {
                 // TLS 1.2 CBC: body = IV (16) + ciphertext (includes MAC + padding)
                 if body.len() < 16 + *mac_len + 1 {
                     return Err(TlsError::record("CBC record too short"));
@@ -239,16 +251,26 @@ impl RecordLayer12 {
                 let plaintext = &decrypted[..mac_start];
                 let received_mac = &decrypted[mac_start..];
 
-                // Verify MAC
-                let computed_mac = prf::compute_mac_sha256(
-                    mac_key,
-                    *sequence,
-                    content_type,
-                    TLS_VERSION_1_2,
-                    plaintext,
-                ).await?;
+                // Verify MAC using appropriate hash algorithm
+                let computed_mac = if *use_sha1 {
+                    prf::compute_mac_sha1(
+                        mac_key,
+                        *sequence,
+                        content_type,
+                        TLS_VERSION_1_2,
+                        plaintext,
+                    ).await?
+                } else {
+                    prf::compute_mac_sha256(
+                        mac_key,
+                        *sequence,
+                        content_type,
+                        TLS_VERSION_1_2,
+                        plaintext,
+                    ).await?
+                };
 
-                // Truncate computed MAC to expected length (for SHA-1 compatibility)
+                // Truncate computed MAC to expected length
                 if received_mac != &computed_mac[..*mac_len] {
                     return Err(TlsError::record("MAC verification failed"));
                 }
@@ -347,15 +369,25 @@ impl RecordLayer12 {
 
                 Ok(result)
             }
-            CipherState::Cbc { cipher: cbc, mac_key, sequence, mac_len } => {
-                // Compute MAC
-                let mac = prf::compute_mac_sha256(
-                    mac_key,
-                    *sequence,
-                    content_type,
-                    TLS_VERSION_1_2,
-                    plaintext,
-                ).await?;
+            CipherState::Cbc { cipher: cbc, mac_key, sequence, mac_len, use_sha1 } => {
+                // Compute MAC using appropriate hash algorithm
+                let mac = if *use_sha1 {
+                    prf::compute_mac_sha1(
+                        mac_key,
+                        *sequence,
+                        content_type,
+                        TLS_VERSION_1_2,
+                        plaintext,
+                    ).await?
+                } else {
+                    prf::compute_mac_sha256(
+                        mac_key,
+                        *sequence,
+                        content_type,
+                        TLS_VERSION_1_2,
+                        plaintext,
+                    ).await?
+                };
 
                 // Truncate MAC to expected length
                 let mac = &mac[..*mac_len];

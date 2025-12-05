@@ -7,37 +7,12 @@
 //!                          HMAC_SHA256(secret, A(2) + seed) + ...
 //! where A(0) = seed, A(i) = HMAC_SHA256(secret, A(i-1))
 
+use crate::crypto::get_subtle_crypto;
 use crate::error::{Result, TlsError};
 use js_sys::{Array, ArrayBuffer, Object, Reflect, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{CryptoKey, SubtleCrypto};
-
-/// Get the SubtleCrypto instance
-fn get_subtle_crypto() -> Result<SubtleCrypto> {
-    if let Some(window) = web_sys::window() {
-        if let Ok(crypto) = window.crypto() {
-            return Ok(crypto.subtle());
-        }
-    }
-    
-    let global = js_sys::global();
-    let crypto = Reflect::get(&global, &"crypto".into())
-        .map_err(|_| TlsError::subtle_crypto("No crypto object in globalThis"))?;
-    
-    if crypto.is_undefined() {
-        return Err(TlsError::subtle_crypto("globalThis.crypto is undefined"));
-    }
-    
-    let subtle = Reflect::get(&crypto, &"subtle".into())
-        .map_err(|_| TlsError::subtle_crypto("No subtle property on crypto"))?;
-    
-    if subtle.is_undefined() {
-        return Err(TlsError::subtle_crypto("crypto.subtle is undefined"));
-    }
-    
-    Ok(subtle.unchecked_into())
-}
+use web_sys::CryptoKey;
 
 /// HMAC-SHA256 for PRF
 async fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {

@@ -14,7 +14,7 @@ use crate::record_1_2::RecordLayer12;
 use crate::TlsConfig;
 use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use std::io;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace};
 
 /// TLS 1.2 encrypted stream
 pub struct TlsStream12<S> {
@@ -385,11 +385,13 @@ where
 
     fn export_keying_material(
         &self,
-        len: usize,
+        _len: usize,
         _label: &[u8],
         _context: Option<&[u8]>,
     ) -> io::Result<Vec<u8>> {
-        warn!("export_keying_material called but not fully implemented for TLS 1.2");
-        Ok(vec![0u8; len])
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "export_keying_material not implemented for TLS 1.2",
+        ))
     }
 }

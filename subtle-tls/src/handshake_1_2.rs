@@ -77,6 +77,7 @@ pub struct CipherSuiteParams {
     pub iv_len: usize,  // Fixed IV length (for GCM: 4, for CBC: 0 since IV is explicit)
     pub is_aead: bool,
     pub mac_len: usize, // For CBC: HMAC output length; for GCM: 0 (tag is part of ciphertext)
+    pub use_sha384: bool, // true for SHA-384 cipher suites (0xC030, 0xC028)
 }
 
 impl CipherSuiteParams {
@@ -88,6 +89,7 @@ impl CipherSuiteParams {
                 iv_len: 4,       // Implicit IV (nonce) for GCM
                 is_aead: true,
                 mac_len: 0,
+                use_sha384: false,
             }),
             TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 => Ok(Self {
                 mac_key_len: 0,
@@ -95,6 +97,7 @@ impl CipherSuiteParams {
                 iv_len: 4,
                 is_aead: true,
                 mac_len: 0,
+                use_sha384: true,
             }),
             TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 => Ok(Self {
                 mac_key_len: 32, // SHA-256 HMAC key
@@ -102,6 +105,7 @@ impl CipherSuiteParams {
                 iv_len: 0,       // Explicit IV in record (not from key block)
                 is_aead: false,
                 mac_len: 32,     // SHA-256 output
+                use_sha384: false,
             }),
             TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 => Ok(Self {
                 mac_key_len: 48, // SHA-384 HMAC key
@@ -109,6 +113,7 @@ impl CipherSuiteParams {
                 iv_len: 0,
                 is_aead: false,
                 mac_len: 48,
+                use_sha384: true,
             }),
             TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA => Ok(Self {
                 mac_key_len: 20, // SHA-1 HMAC key
@@ -116,6 +121,7 @@ impl CipherSuiteParams {
                 iv_len: 0,
                 is_aead: false,
                 mac_len: 20,     // SHA-1 output
+                use_sha384: false,
             }),
             TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA => Ok(Self {
                 mac_key_len: 20,
@@ -123,6 +129,7 @@ impl CipherSuiteParams {
                 iv_len: 0,
                 is_aead: false,
                 mac_len: 20,
+                use_sha384: false,
             }),
             _ => Err(TlsError::protocol(format!("Unsupported cipher suite: 0x{:04x}", suite))),
         }
@@ -243,17 +250,15 @@ impl Handshake12State {
         extensions.push(sni.len() as u8);
         extensions.extend_from_slice(&sni);
 
-        // Supported Groups (Elliptic Curves)
+        // Supported Groups (Elliptic Curves) - only P-256 is implemented
         extensions.push((EXT_SUPPORTED_GROUPS >> 8) as u8);
         extensions.push(EXT_SUPPORTED_GROUPS as u8);
         extensions.push(0);
-        extensions.push(6); // Length
+        extensions.push(4); // Length (2 bytes for list len + 2 bytes for group)
         extensions.push(0);
-        extensions.push(4); // Groups list length
+        extensions.push(2); // Groups list length
         extensions.push((GROUP_SECP256R1 >> 8) as u8);
         extensions.push(GROUP_SECP256R1 as u8);
-        extensions.push((GROUP_SECP384R1 >> 8) as u8);
-        extensions.push(GROUP_SECP384R1 as u8);
 
         // EC Point Formats
         extensions.push((EXT_EC_POINT_FORMATS >> 8) as u8);
@@ -501,8 +506,13 @@ impl Handshake12State {
         let master_secret = self.master_secret.as_ref()
             .ok_or_else(|| TlsError::handshake("No master secret"))?;
 
-        // Compute hash of transcript
-        let transcript_hash = crypto::sha256(&self.transcript).await?;
+        // Use SHA-384 for cipher suites that require it, otherwise SHA-256
+        let params = self.get_cipher_params()?;
+        let transcript_hash = if params.use_sha384 {
+            crypto::sha384(&self.transcript).await?
+        } else {
+            crypto::sha256(&self.transcript).await?
+        };
         
         // Compute verify_data
         let verify_data = prf::compute_verify_data(
@@ -526,8 +536,13 @@ impl Handshake12State {
         let master_secret = self.master_secret.as_ref()
             .ok_or_else(|| TlsError::handshake("No master secret"))?;
 
-        // Compute hash of transcript (up to but not including server Finished)
-        let transcript_hash = crypto::sha256(&self.transcript).await?;
+        // Use SHA-384 for cipher suites that require it, otherwise SHA-256
+        let params = self.get_cipher_params()?;
+        let transcript_hash = if params.use_sha384 {
+            crypto::sha384(&self.transcript).await?
+        } else {
+            crypto::sha256(&self.transcript).await?
+        };
         
         // Compute expected verify_data
         let expected = prf::compute_verify_data(

@@ -20,7 +20,7 @@ use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 
 /// Get the SubtleCrypto instance from the runtime environment.
 /// Supports both browser (window.crypto) and Node.js (globalThis.crypto).
-fn get_subtle_crypto() -> Result<SubtleCrypto> {
+pub fn get_subtle_crypto() -> Result<SubtleCrypto> {
     // First try web_sys::window() for browser environments
     if let Some(window) = web_sys::window() {
         if let Ok(crypto) = window.crypto() {

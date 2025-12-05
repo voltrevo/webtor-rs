@@ -62,7 +62,14 @@ pub enum TlsVersion {
     /// TLS 1.2 only
     #[cfg(feature = "tls12")]
     Tls12,
-    /// Try TLS 1.3 first, fall back to TLS 1.2
+    /// Try TLS 1.3 first.
+    /// 
+    /// Note: This does NOT automatically fall back to TLS 1.2 on failure because
+    /// streams cannot be cloned/reused after a failed handshake. If TLS 1.3 fails,
+    /// you must create a new connection and try with `Tls12` explicitly.
+    /// 
+    /// For automatic fallback, see the http.rs example which creates a new stream
+    /// and retries with TLS 1.2 when TLS 1.3 fails.
     #[cfg(feature = "tls12")]
     Prefer13,
 }
