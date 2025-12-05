@@ -96,6 +96,9 @@ async function runBenchmark() {
 
     const context = await browser.newContext();
     const page = await context.newPage();
+    
+    // Set page timeout for long-running Tor operations
+    page.setDefaultTimeout(CONFIG.timeout);
 
     // Listen to console
     page.on('console', msg => {
@@ -123,6 +126,8 @@ async function runBenchmark() {
         
         const benchmarkFn = CONFIG.quick ? 'runQuickBenchmark' : 'runTorBenchmark';
         
+        // Note: page.evaluate doesn't accept a timeout option as 3rd arg
+        // We set page.setDefaultTimeout() above instead
         const result = await page.evaluate(async ({ fn, url }) => {
             try {
                 const result = await window.webtor_demo[fn](url);
@@ -137,7 +142,7 @@ async function runBenchmark() {
                     error: e.toString(),
                 };
             }
-        }, { fn: benchmarkFn, url: CONFIG.testUrl }, { timeout: CONFIG.timeout });
+        }, { fn: benchmarkFn, url: CONFIG.testUrl });
 
         console.log('\n=== Benchmark Results ===');
         

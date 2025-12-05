@@ -20,7 +20,7 @@ fn bench_make_circ_params(c: &mut Criterion) {
 
 /// Benchmark relay selection algorithm
 fn bench_relay_selection(c: &mut Criterion) {
-    use webtor::relay::{Relay, RelayManager, flags};
+    use webtor::relay::{Relay, RelayManager, RelayCriteria, flags};
     
     // Create a set of test relays
     let relays: Vec<Relay> = (0..1000).map(|i| {
@@ -42,21 +42,38 @@ fn bench_relay_selection(c: &mut Criterion) {
     
     let manager = RelayManager::new(relays);
     
+    // Guard relay criteria
+    let guard_criteria = RelayCriteria::new()
+        .with_flag(flags::GUARD)
+        .with_flag(flags::FAST)
+        .with_flag(flags::STABLE);
+    
+    // Middle relay criteria  
+    let middle_criteria = RelayCriteria::new()
+        .with_flag(flags::FAST)
+        .with_flag(flags::STABLE);
+    
+    // Exit relay criteria
+    let exit_criteria = RelayCriteria::new()
+        .with_flag(flags::EXIT)
+        .with_flag(flags::FAST)
+        .with_flag(flags::STABLE);
+    
     c.bench_function("select_guard_relay", |b| {
         b.iter(|| {
-            black_box(manager.select_guard().unwrap())
+            black_box(manager.select_relay(&guard_criteria).unwrap())
         })
     });
     
     c.bench_function("select_middle_relay", |b| {
         b.iter(|| {
-            black_box(manager.select_middle().unwrap())
+            black_box(manager.select_relay(&middle_criteria).unwrap())
         })
     });
     
     c.bench_function("select_exit_relay", |b| {
         b.iter(|| {
-            black_box(manager.select_exit().unwrap())
+            black_box(manager.select_relay(&exit_criteria).unwrap())
         })
     });
 }
