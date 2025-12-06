@@ -4,11 +4,10 @@
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-# unmaintained, yanked, notice only accept: "deny" or "allow" 
-unmaintained = "allow"
-yanked = "allow"
-notice = "allow"
+# unmaintained: "all", "workspace", "transitive", "none"
+unmaintained = "none"
+# yanked: "deny", "warn", "allow"
+yanked = "warn"
 # Allow specific advisories if needed (document reason)
 # ignore = ["RUSTSEC-XXXX-XXXX"]
 
