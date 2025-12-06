@@ -27,6 +27,7 @@ allow = [
     "CC0-1.0",
     "BSL-1.0",
     "Unlicense",
+    "CDLA-Permissive-2.0",
 ]
 # Confidence threshold for detecting license
 confidence-threshold = 0.8
