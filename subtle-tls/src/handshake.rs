@@ -746,8 +746,8 @@ pub fn parse_finished(data: &[u8]) -> Result<Vec<u8>> {
     Ok(data.to_vec())
 }
 
-/// Maximum handshake message size (16 MiB, matches TLS spec)
-pub const MAX_HANDSHAKE_MESSAGE_SIZE: usize = 1 << 24;
+/// Maximum handshake message size (matches TLS spec 24-bit length field: 0 to 2^24-1)
+pub const MAX_HANDSHAKE_MESSAGE_SIZE: usize = (1 << 24) - 1;
 
 #[cfg(kani)]
 mod verification {
@@ -793,7 +793,7 @@ mod verification {
     fn handshake_header_length_bounded() {
         let data: [u8; 4] = kani::any();
         if let Ok((_ty, len)) = parse_handshake_header(&data) {
-            kani::assert(len <= MAX_HANDSHAKE_MESSAGE_SIZE, "length exceeds max");
+            kani::assert(len < (1 << 24), "length exceeds 24-bit max");
         }
     }
 
