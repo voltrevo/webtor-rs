@@ -22,9 +22,10 @@ jobs:
   kani:
     name: Kani Proofs
     runs-on: self-hosted
-    # Require manual approval for PRs from forks to protect self-hosted runner
+    # Require manual approval for PRs from external forks to protect self-hosted runner
     # Configure "self-hosted-runner" environment in repo settings with required reviewers
-    environment: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'self-hosted-runner' || '' }}
+    # Skip approval for repo owner (igor53627)
+    environment: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && github.actor != 'igor53627' && 'self-hosted-runner' || '' }}
     steps:
       # Pin to commit SHA to prevent supply chain attacks
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
