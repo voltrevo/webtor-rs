@@ -203,8 +203,15 @@ impl CircuitManager {
         }
     }
     
-    /// Create a new circuit
-    pub async fn create_circuit(&self) -> Result<Arc<RwLock<Circuit>>> {
+    /// Create a new circuit, optionally binding it to an isolation key
+    /// 
+    /// If an isolation key is provided, the circuit will be bound to it
+    /// BEFORE being added to the circuit list, preventing races where
+    /// another request could steal the unassigned circuit.
+    pub async fn create_circuit_with_isolation(
+        &self,
+        isolation_key: Option<IsolationKey>,
+    ) -> Result<Arc<RwLock<Circuit>>> {
         let circuit_id = format!("circuit_{}", uuid::Uuid::new_v4());
         info!("Creating new circuit: {}", circuit_id);
         
@@ -331,6 +338,11 @@ impl CircuitManager {
         // Store relays
         circuit.relays = vec![bridge_relay, middle, exit];
         circuit.status = CircuitStatus::Ready;
+
+        // Bind isolation key BEFORE adding to list to prevent races
+        if let Some(key) = isolation_key {
+            circuit.set_isolation_key(key);
+        }
         
         info!("Circuit {} created with {} relays", circuit_id, circuit.relays.len());
         
@@ -341,6 +353,11 @@ impl CircuitManager {
         circuits.push(circuit_arc.clone());
         
         Ok(circuit_arc)
+    }
+
+    /// Create a new circuit (unassigned, for prebuilding)
+    pub async fn create_circuit(&self) -> Result<Arc<RwLock<Circuit>>> {
+        self.create_circuit_with_isolation(None).await
     }
     
     /// Get a ready circuit (create one if none exist)
@@ -404,14 +421,14 @@ impl CircuitManager {
         }
 
         // 2. Look for a ready unassigned circuit to bind
+        // IMPORTANT: We must check AND set under the same write lock to prevent races
+        // where two different keys both see the same unassigned circuit
         {
             let circuits = self.circuits.read().await;
             for circuit in circuits.iter() {
-                let circuit_read = circuit.read().await;
-                if circuit_read.is_ready() && circuit_read.isolation_key.is_none() {
-                    debug!("Binding unassigned circuit {} to isolation key {}", circuit_read.id, key);
-                    drop(circuit_read);
-                    let mut circuit_write = circuit.write().await;
+                let mut circuit_write = circuit.write().await;
+                if circuit_write.is_ready() && circuit_write.isolation_key.is_none() {
+                    debug!("Binding unassigned circuit {} to isolation key {}", circuit_write.id, key);
                     circuit_write.set_isolation_key(key.clone());
                     circuit_write.update_last_used();
                     return Ok(circuit.clone());
@@ -448,12 +465,13 @@ impl CircuitManager {
             }
         }
 
-        // 4. Create a new circuit and bind it to this key
+        // 4. Create a new circuit already bound to this key
+        // We pass the key to create_circuit_with_isolation so it's bound
+        // BEFORE the circuit is added to the list, preventing races
         info!("Creating new circuit for isolation key {}", key);
-        let circuit = self.create_circuit().await?;
+        let circuit = self.create_circuit_with_isolation(Some(key)).await?;
         {
             let mut circuit_write = circuit.write().await;
-            circuit_write.set_isolation_key(key);
             circuit_write.update_last_used();
         }
         Ok(circuit)
