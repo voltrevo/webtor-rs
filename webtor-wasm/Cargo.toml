@@ -27,7 +27,7 @@ futures = { workspace = true }
 # Logging
 tracing = { workspace = true }
 tracing-wasm = { workspace = true }
-tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
+tracing-subscriber = { version = "0.3.22", default-features = false, features = ["registry"] }
 # Use gloo-console or simple wrapper for console_log!
 gloo-console = "0.3"
 

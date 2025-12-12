@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Updated tracing-subscriber to 0.3.22 for RUSTSEC-2025-0055 security fix
+- Documented congestion control parameters alignment with Arti 1.8.0 defaults
+
 ## [0.2.2] - 2025-12-11
 
 ### Added

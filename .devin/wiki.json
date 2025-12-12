@@ -1,0 +1,26 @@
+{
+  "pages": [
+    {
+      "title": "Architecture",
+      "description": "Overview of webtor-rs architecture including crate structure and data flow"
+    },
+    {
+      "title": "Circuit Management",
+      "description": "How Tor circuits are created, managed, and reused with stream isolation"
+    },
+    {
+      "title": "Transports",
+      "description": "Snowflake and WebTunnel transport implementations for WASM and native"
+    },
+    {
+      "title": "TLS Implementation",
+      "description": "SubtleCrypto-based TLS for WASM via subtle-tls crate"
+    }
+  ],
+  "repo_notes": [
+    "webtor-rs uses vendored Arti/tor-proto crates for WASM compatibility",
+    "Congestion control parameters in circuit.rs match Arti 1.8.0 defaults (cc_xoff_client=500, cc_xoff_exit=500, cc_xon_rate=500)",
+    "Consensus data is embedded at compile time from webtor/src/cached/ and updated daily by GitHub Actions",
+    "ring crate doesn't compile to WASM, so subtle-tls provides TLS via browser's SubtleCrypto API"
+  ]
+}

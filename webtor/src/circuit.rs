@@ -166,6 +166,10 @@ pub fn make_circ_params() -> Result<CircParameters> {
         .map_err(|e| TorError::Internal(format!("Failed to build cc params: {}", e)))?;
         
     // 5. Flow Control Params
+    // These values are copied from tor-proto's FlowCtrlParameters::defaults_for_tests()
+    // in Arti 1.8.0, which mirror the current Tor consensus defaults.
+    // NOTE: If you bump the vendored Arti/tor-proto version, re-check these values
+    // against tor-proto's src/stream/flow_ctrl/params.rs in the vendored Arti tree.
     let flow_ctrl = FlowCtrlParameters {
         cc_xoff_client: CellCount::new(500),
         cc_xoff_exit: CellCount::new(500),
