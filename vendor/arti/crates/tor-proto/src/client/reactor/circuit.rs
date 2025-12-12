@@ -1287,14 +1287,10 @@ impl Circuit {
         }
 
         if msg.cmd() == RelayCmd::DROP {
-            cfg_if::cfg_if! {
-                if #[cfg(feature = "circ-padding")] {
-                    return Ok(None);
-                } else {
-                    use crate::util::err::ExcessPadding;
-                    return Err(Error::ExcessPadding(ExcessPadding::NoPaddingNegotiated, hopnum));
-                }
-            }
+            // Silently ignore DROP/padding cells for forward compatibility.
+            // This allows webtor-rs to tolerate padding cells from relays
+            // without requiring full circ-padding feature.
+            return Ok(None);
         }
 
         trace!(circ_id = %self.unique_id, cell = ?msg, "Received meta-cell");
