@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - record.rs: Use debug! instead of info! for per-record logging (reduce noise)
 - client.rs: Use .cloned() instead of .map(|s| s.clone())
 - smux.rs: Clarify partial-write recovery guidance in poll_write comment
+- build.rs: Derive Arti version from vendored tor-proto Cargo.toml
+
+### Fixed
+- subtle-tls: Avoid panic on truncated ServerHello by checking buffer length before parsing
 
 ## [0.4.0] - 2025-12-13
 
