@@ -59,7 +59,6 @@ mod compound;
 mod dyn_time;
 pub mod general;
 mod opaque;
-mod portable_instant;
 pub mod scheduler;
 mod timer;
 mod traits;
@@ -76,7 +75,6 @@ pub use traits::{
 
 pub use coarse_time::{CoarseDuration, CoarseInstant, RealCoarseTimeProvider};
 pub use dyn_time::DynTimeProvider;
-pub use portable_instant::Instant as PortableInstant;
 pub use timer::{SleepProviderExt, Timeout, TimeoutError};
 
 /// Traits used to describe TLS connections and objects that can
@@ -412,8 +410,7 @@ mod test {
     use std::io::Result as IoResult;
     use std::net::SocketAddr;
     use std::net::{Ipv4Addr, SocketAddrV4};
-    use std::time::Duration;
-    use crate::portable_instant::Instant;
+    use std::time::{Duration, Instant};
 
     // Test "sleep" with a tiny delay, and make sure that at least that
     // much delay happens.

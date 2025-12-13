@@ -54,6 +54,7 @@ pub(super) struct HsDescInner<'a> {
     pub(super) pow_params: Option<&'a PowParams>,
 }
 
+/// Encode the pow-params line.
 #[cfg(feature = "hs-pow-full")]
 fn encode_pow_params(
     encoder: &mut NetdocEncoder,
@@ -66,11 +67,11 @@ fn encode_pow_params(
     // expiration alongside the value.
     let (seed, (_, expiration)) = pow_params.seed().clone().dangerously_into_parts();
 
-    seed.write_onto(&mut pow_params_enc)?;
+    seed.write_arg_onto(&mut pow_params_enc)?;
 
     pow_params
         .suggested_effort()
-        .write_onto(&mut pow_params_enc)?;
+        .write_arg_onto(&mut pow_params_enc)?;
 
     let expiration = if let Some(expiration) = expiration {
         expiration
@@ -78,7 +79,7 @@ fn encode_pow_params(
         return Err(internal!("PoW seed should always have expiration").into());
     };
 
-    Iso8601TimeNoSp::from(expiration).write_onto(&mut pow_params_enc)?;
+    Iso8601TimeNoSp::from(expiration).write_arg_onto(&mut pow_params_enc)?;
 
     Ok(())
 }

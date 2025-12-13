@@ -1,5 +1,6 @@
 //! Client-specific types and implementation.
 
+pub mod channel;
 pub mod circuit;
 pub mod stream;
 
@@ -13,6 +14,7 @@ use oneshot_fused_workaround as oneshot;
 use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use tracing::instrument;
 
 use crate::circuit::UniqId;
 #[cfg(feature = "circ-padding-manual")]
@@ -203,7 +205,7 @@ impl ClientTunnel {
     /// NOTE that the Instant returned by this method is not affected by
     /// any runtime mocking; it is the output of an ordinary call to
     /// `Instant::now()`.
-    pub async fn disused_since(&self) -> Result<Option<crate::util::wasm_time::Instant>> {
+    pub async fn disused_since(&self) -> Result<Option<std::time::Instant>> {
         self.circ.disused_since().await
     }
 
@@ -484,6 +486,7 @@ impl ClientTunnel {
     ///
     /// The use of a string for the address is intentional: you should let
     /// the remote Tor relay do the hostname lookup for you.
+    #[instrument(level = "trace", skip_all)]
     pub async fn begin_stream(
         self: &Arc<Self>,
         target: &str,

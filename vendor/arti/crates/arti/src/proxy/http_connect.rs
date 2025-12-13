@@ -89,6 +89,19 @@ mod hdr {
     /// Proxy-to-client: A machine-readable list of failure reasons.
     pub(super) const TOR_REQUEST_FAILED: &str = "Tor-Request-Failed";
 
+    /// A list of all the headers that we support from client-to-proxy.
+    ///
+    /// Does not include headers that we check for HTTP conformance,
+    /// but not for any other purpose.
+    pub(super) const ALL_REQUEST_HEADERS: &[&str] = &[
+        TOR_FAMILY_PREFERENCE,
+        TOR_RPC_TARGET,
+        X_TOR_STREAM_ISOLATION,
+        TOR_STREAM_ISOLATION,
+        // Can't use 'PROXY_AUTHORIZATION', since it isn't a str, and its as_str() isn't const.
+        "Proxy-Authorization",
+    ];
+
     /// Return the unique string-valued value of the header `name`;
     /// or None if the header doesn't exist,
     /// or an error if the header is duplicated or not UTF-8.
@@ -472,9 +485,21 @@ impl RespBldExt for ResponseBuilder {
     }
 }
 
+/// Return a string representing our capabilities.
+fn capabilities() -> &'static str {
+    use std::sync::LazyLock;
+    static CAPS: LazyLock<String> = LazyLock::new(|| {
+        let mut caps = hdr::ALL_REQUEST_HEADERS.to_vec();
+        caps.sort();
+        caps.join(" ")
+    });
+
+    CAPS.as_str()
+}
+
 /// Add all common headers to the builder `bld`, and return a new builder.
 fn add_common_headers(mut bld: ResponseBuilder, method: &Method) -> ResponseBuilder {
-    bld = bld.header(hdr::TOR_CAPABILITIES, "");
+    bld = bld.header(hdr::TOR_CAPABILITIES, capabilities());
     if let (Some(software), Some(version)) = (
         option_env!("CARGO_PKG_NAME"),
         option_env!("CARGO_PKG_VERSION"),
@@ -557,6 +582,9 @@ impl HttpConnectError {
     fn status_code(&self) -> StatusCode {
         use HttpConnectError as HCE; // Not a Joyce reference
         use StatusCode as SC;
+        if let Some(end_reason) = self.remote_end_reason() {
+            return end_reason_to_http_status(end_reason);
+        }
         match self {
             HCE::InvalidStreamTarget(_, _)
             | HCE::DuplicateHeader
@@ -572,9 +600,10 @@ impl HttpConnectError {
     /// If possible, return a response that we should give to this error.
     fn try_into_response(self) -> Result<Response<Body>, HttpConnectError> {
         let error_kind = self.kind();
+        let end_reason = self.remote_end_reason();
         let status_code = self.status_code();
         let mut request_failed = format!("arti/{error_kind:?}");
-        if let Some(end_reason) = self.remote_end_reason() {
+        if let Some(end_reason) = end_reason {
             request_failed.push_str(&format!(" end/{end_reason}"));
         }
 
@@ -603,6 +632,39 @@ impl HttpConnectError {
                 return None;
             }
         }
+    }
+}
+
+/// Return the appropriate HTTP status code for a remote END reason.
+///
+/// Return `None` if the END reason is unrecognized and we should use the `ErrorKind`
+///
+/// (We  _could_ use the ErrorKind unconditionally,
+/// but the mapping from END reason to ErrorKind is [given in the spec][spec],
+/// so we try to obey it.)
+///
+/// [spec]: https://spec.torproject.org/http-connect.html#error-codes
+fn end_reason_to_http_status(end_reason: tor_cell::relaycell::msg::EndReason) -> StatusCode {
+    use StatusCode as S;
+    use tor_cell::relaycell::msg::EndReason as R;
+    match end_reason {
+        //
+        R::CONNECTREFUSED => S::FORBIDDEN, // 403
+        // 500: Internal server error.
+        R::MISC | R::NOTDIRECTORY => S::INTERNAL_SERVER_ERROR,
+
+        // 502: Bad Gateway.
+        R::DESTROY | R::DONE | R::HIBERNATING | R::INTERNAL | R::RESOURCELIMIT | R::TORPROTOCOL => {
+            S::BAD_GATEWAY
+        }
+        // 503: Service unavailable
+        R::CONNRESET | R::EXITPOLICY | R::NOROUTE | R::RESOLVEFAILED => S::SERVICE_UNAVAILABLE,
+
+        // 504: Gateway timeout.
+        R::TIMEOUT => S::GATEWAY_TIMEOUT,
+
+        // This is possible if the other side sent an unrecognized error code.
+        _ => S::INTERNAL_SERVER_ERROR, // 500
     }
 }
 

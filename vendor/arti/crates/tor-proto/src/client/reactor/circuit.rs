@@ -57,7 +57,7 @@ use oneshot_fused_workaround as oneshot;
 use postage::watch;
 use safelog::sensitive as sv;
 use tor_rtcompat::{DynTimeProvider, SleepProvider as _};
-use tracing::{debug, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
 use super::{
     CellHandlers, CircuitHandshake, CloseStreamBehavior, ReactorResultChannel, SendRelayCell,
@@ -69,8 +69,7 @@ use std::borrow::Borrow;
 use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use crate::util::wasm_time::Instant;
+use std::time::{Duration, Instant, SystemTime};
 
 use create::{Create2Wrap, CreateFastWrap, CreateHandshakeWrap};
 use extender::HandshakeAuxDataHandler;
@@ -418,6 +417,7 @@ impl Circuit {
     /// NOTE: the reactor should not call this function directly, only via
     /// [`ConfluxSet::send_relay_cell_on_leg`](super::conflux::ConfluxSet::send_relay_cell_on_leg),
     /// which will reroute the message, if necessary to the primary leg.
+    #[instrument(level = "trace", skip_all)]
     pub(super) async fn send_relay_cell(&mut self, msg: SendRelayCell) -> Result<()> {
         self.send_relay_cell_inner(msg, None).await
     }
@@ -427,6 +427,7 @@ impl Circuit {
     ///
     /// If `padding_info` is None, `msg` must be non-padding: we report it as such to the
     /// padding controller.
+    #[instrument(level = "trace", skip_all)]
     async fn send_relay_cell_inner(
         &mut self,
         msg: SendRelayCell,
@@ -718,7 +719,7 @@ impl Circuit {
         streamid: StreamId,
         msg: UnparsedRelayMsg,
     ) -> Result<Option<CircuitCmd>> {
-        let now = crate::util::wasm_time::Instant::now();
+        let now = self.runtime.now();
 
         #[cfg(feature = "conflux")]
         if let Some(conflux) = self.conflux_handler.as_mut() {
@@ -1360,6 +1361,7 @@ impl Circuit {
     }
 
     /// Handle a RELAY_SENDME cell on this circuit with stream ID 0.
+    #[instrument(level = "trace", skip_all)]
     pub(super) fn handle_sendme(
         &mut self,
         hopnum: HopNum,
@@ -1399,6 +1401,7 @@ impl Circuit {
     /// check whether the channel is ready to receive messages (`self.channel.poll_ready`), and
     /// ideally use this to implement backpressure (such that you do not read from other sources
     /// that would send here while you know you're unable to forward the messages on).
+    #[instrument(level = "trace", skip_all)]
     async fn send_msg(
         &mut self,
         msg: AnyChanMsg,
@@ -1458,6 +1461,7 @@ impl Circuit {
     }
 
     /// Close the specified stream
+    #[instrument(level = "trace", skip_all)]
     pub(super) async fn close_stream(
         &mut self,
         hop_num: HopNum,

@@ -18,6 +18,7 @@ use tor_proto::ClientTunnel;
 use tor_proto::circuit::UniqId;
 use tor_proto::client::circuit::{CircParameters, Path};
 use tor_rtcompat::Runtime;
+use tracing::instrument;
 
 #[async_trait]
 impl mgr::AbstractTunnel for tor_proto::ClientTunnel {
@@ -31,6 +32,10 @@ impl mgr::AbstractTunnel for tor_proto::ClientTunnel {
         !self.is_closing()
     }
 
+    // TODO: replace Itertools::exactly_one() with a stdlib equivalent when there is one.
+    //
+    // See issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+    #[allow(unstable_name_collisions)]
     fn single_path(&self) -> tor_proto::Result<Arc<Path>> {
         use itertools::Itertools as _;
 
@@ -94,6 +99,7 @@ impl<R: Runtime> crate::mgr::AbstractTunnelBuilder<R> for crate::build::TunnelBu
     type Tunnel = ClientTunnel;
     type Plan = Plan;
 
+    #[instrument(level = "trace", skip_all)]
     fn plan_tunnel(
         &self,
         usage: &TargetTunnelUsage,
@@ -121,6 +127,7 @@ impl<R: Runtime> crate::mgr::AbstractTunnelBuilder<R> for crate::build::TunnelBu
         Ok((plan, final_spec))
     }
 
+    #[instrument(level = "trace", skip_all)]
     async fn build_tunnel(&self, plan: Plan) -> Result<(SupportedTunnelUsage, Self::Tunnel)> {
         use crate::build::GuardStatusHandle;
         use tor_guardmgr::GuardStatus;
@@ -217,10 +224,12 @@ impl<R: Runtime> crate::mgr::AbstractTunnelBuilder<R> for crate::build::TunnelBu
         TunnelBuilder::vanguardmgr(self)
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn upgrade_to_owned_state(&self) -> Result<()> {
         TunnelBuilder::upgrade_to_owned_state(self)
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn reload_state(&self) -> Result<()> {
         TunnelBuilder::reload_state(self)
     }

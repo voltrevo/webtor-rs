@@ -1,5 +1,10 @@
 //! Conflux-related functionality
 
+// TODO: replace Itertools::exactly_one() with a stdlib equivalent when there is one.
+//
+// See issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+#![allow(unstable_name_collisions)]
+
 #[cfg(feature = "conflux")]
 pub(crate) mod msghandler;
 
@@ -12,7 +17,7 @@ use itertools::Itertools;
 use itertools::structs::ExactlyOneError;
 use smallvec::{SmallVec, smallvec};
 use tor_rtcompat::{SleepProvider as _, SleepProviderExt as _};
-use tracing::{info, trace, warn};
+use tracing::{info, instrument, trace, warn};
 
 use tor_cell::relaycell::AnyRelayMsgOuter;
 use tor_error::{Bug, bad_api_usage, internal};
@@ -286,6 +291,7 @@ impl ConfluxSet {
     /// We do not yet support resumption. See [2.4.3. Closing circuits] in prop329.
     ///
     /// [2.4.3. Closing circuits]: https://spec.torproject.org/proposals/329-traffic-splitting.html#243-closing-circuits
+    #[instrument(level = "trace", skip_all)]
     pub(super) fn remove(&mut self, leg: UniqId) -> Result<Circuit, ReactorError> {
         let circ = self.remove_unchecked(leg)?;
 
@@ -904,6 +910,7 @@ impl ConfluxSet {
     ///
     /// This is cancellation-safe.
     #[allow(clippy::unnecessary_wraps)] // Can return Err if conflux is enabled
+    #[instrument(level = "trace", skip_all)]
     pub(super) async fn next_circ_action(
         &mut self,
         runtime: &tor_rtcompat::DynTimeProvider,
@@ -953,7 +960,7 @@ impl ConfluxSet {
             // StreamMap::closed_streams into a min-heap, and add a branch to the
             // select_biased! below to sleep until the first expiry is due
             // (but my gut feeling is that iterating is cheaper)
-            leg.remove_expired_halfstreams(crate::util::wasm_time::Instant::now());
+            leg.remove_expired_halfstreams(runtime.now());
 
             // The client SHOULD abandon and close circuit if the LINKED message takes too long to
             // arrive. This timeout MUST be no larger than the normal SOCKS/stream timeout in use for
@@ -1091,6 +1098,7 @@ impl ConfluxSet {
     /// Encode `msg`, encrypt it, and send it to the 'hop'th hop.
     ///
     /// See [`Circuit::send_relay_cell`].
+    #[instrument(level = "trace", skip_all)]
     pub(super) async fn send_relay_cell_on_leg(
         &mut self,
         msg: SendRelayCell,

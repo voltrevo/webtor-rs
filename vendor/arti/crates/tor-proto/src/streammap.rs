@@ -26,7 +26,7 @@ use std::collections::hash_map;
 use std::num::NonZeroU16;
 use std::pin::Pin;
 use std::task::{Poll, Waker};
-use crate::util::wasm_time::Instant;
+use std::time::Instant;
 use tor_error::{bad_api_usage, internal};
 
 use rand::Rng;

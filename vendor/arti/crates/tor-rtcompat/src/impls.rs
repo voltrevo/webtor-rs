@@ -158,15 +158,6 @@ pub(crate) fn tcp_listen(addr: &std::net::SocketAddr) -> std::io::Result<std::ne
     Ok(socket.into())
 }
 
-/// WASM stub - TCP listening is not supported in WASM.
-#[cfg(target_arch = "wasm32")]
-pub(crate) fn tcp_listen(_addr: &std::net::SocketAddr) -> std::io::Result<std::net::TcpListener> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "TCP listening is not supported in WASM",
-    ))
-}
-
 /// Helper: Implement an unreachable NetProvider<unix::SocketAddr> for a given runtime.
 #[cfg(not(unix))]
 macro_rules! impl_unix_non_provider {

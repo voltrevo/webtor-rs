@@ -8,8 +8,7 @@ use futures::{AsyncRead, AsyncWrite, Future};
 use std::fmt::Debug;
 use std::io::{self, Result as IoResult};
 use std::net;
-use std::time::{Duration, SystemTime};
-use crate::portable_instant::Instant;
+use std::time::{Duration, Instant, SystemTime};
 use tor_general_addr::unix;
 
 /// A runtime for use by Tor client library code.
