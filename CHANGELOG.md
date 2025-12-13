@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- UI: Added "Our Crates" version tooltip showing webtor, webtor-wasm, webtor-demo, subtle-tls versions
+
 ## [0.4.0] - 2025-12-13
 
 ### Changed

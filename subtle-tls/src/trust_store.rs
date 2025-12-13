@@ -104,12 +104,12 @@ impl RootCertificate {
         let pem_bytes = pem.as_bytes();
         let (_, pem_data) = x509_parser::pem::parse_x509_pem(pem_bytes)
             .map_err(|e| TlsError::certificate(format!("Failed to parse PEM: {}", e)))?;
-        
+
         let (_, cert) = X509Certificate::from_der(&pem_data.contents)
             .map_err(|e| TlsError::certificate(format!("Failed to parse certificate: {}", e)))?;
-        
+
         let subject = cert.subject().to_string();
-        
+
         Ok(Self {
             der: pem_data.contents,
             subject,
@@ -131,14 +131,17 @@ impl TrustStore {
     /// Create a new trust store with embedded Let's Encrypt roots
     pub fn new() -> Result<Self> {
         let mut embedded_roots = Vec::new();
-        
+
         // Parse embedded root certificates
         embedded_roots.push(RootCertificate::from_pem(ISRG_ROOT_X1_PEM)?);
         embedded_roots.push(RootCertificate::from_pem(ISRG_ROOT_X2_PEM)?);
         embedded_roots.push(RootCertificate::from_pem(DIGICERT_GLOBAL_ROOT_G2_PEM)?);
-        
-        info!("Initialized trust store with {} embedded root CAs", embedded_roots.len());
-        
+
+        info!(
+            "Initialized trust store with {} embedded root CAs",
+            embedded_roots.len()
+        );
+
         Ok(Self {
             embedded_roots,
             extended_roots: Rc::new(RefCell::new(None)),
@@ -167,14 +170,14 @@ impl TrustStore {
         // Parse the issuer to get subject
         if let Ok((_, issuer_cert)) = X509Certificate::from_der(issuer_der) {
             let issuer_subject = issuer_cert.subject().to_string();
-            
+
             // Check embedded roots
             for root in &self.embedded_roots {
                 if root.subject == issuer_subject {
                     return Some(root);
                 }
             }
-            
+
             // Check extended roots
             if let Some(ref extended) = *self.extended_roots.borrow() {
                 for root in extended {
@@ -185,7 +188,7 @@ impl TrustStore {
                 }
             }
         }
-        
+
         None
     }
 
@@ -197,7 +200,7 @@ impl TrustStore {
                 return true;
             }
         }
-        
+
         // Check extended roots
         if let Some(ref extended) = *self.extended_roots.borrow() {
             for root in extended {
@@ -206,7 +209,7 @@ impl TrustStore {
                 }
             }
         }
-        
+
         false
     }
 
@@ -214,14 +217,14 @@ impl TrustStore {
     pub fn is_issued_by_trusted_root(&self, cert_der: &[u8]) -> bool {
         if let Ok((_, cert)) = X509Certificate::from_der(cert_der) {
             let issuer = cert.issuer().to_string();
-            
+
             // Check embedded roots
             for root in &self.embedded_roots {
                 if root.subject == issuer {
                     return true;
                 }
             }
-            
+
             // Check extended roots
             if let Some(ref extended) = *self.extended_roots.borrow() {
                 for root in extended {
@@ -231,14 +234,14 @@ impl TrustStore {
                 }
             }
         }
-        
+
         false
     }
 
     /// Load the extended CA bundle from a PEM string
     pub fn load_extended_roots(&self, pem_bundle: &str) -> Result<usize> {
         let mut roots = Vec::new();
-        
+
         // Parse all certificates from the PEM bundle
         let mut remaining = pem_bundle.as_bytes();
         while !remaining.is_empty() {
@@ -256,10 +259,10 @@ impl TrustStore {
                 Err(_) => break,
             }
         }
-        
+
         let count = roots.len();
         *self.extended_roots.borrow_mut() = Some(roots);
-        
+
         info!("Loaded {} extended root CAs", count);
         Ok(count)
     }
