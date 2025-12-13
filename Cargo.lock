@@ -4231,6 +4231,7 @@ dependencies = [
  "tor-general-addr",
  "tracing",
  "void",
+ "web-time",
 ]
 
 [[package]]
@@ -4653,6 +4654,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "webpki-roots"
 version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4672,7 +4683,7 @@ dependencies = [
 
 [[package]]
 name = "webtor"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4733,7 +4744,7 @@ dependencies = [
 
 [[package]]
 name = "webtor-demo"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "js-sys",
@@ -4751,7 +4762,7 @@ dependencies = [
 
 [[package]]
 name = "webtor-wasm"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "console_error_panic_hook",

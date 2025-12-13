@@ -91,6 +91,8 @@ tor-error = { version = "0.37.0", path = "../tor-error", features = ["tracing"] 
 tor-general-addr = { version = "0.37.0", path = "../tor-general-addr" }
 tracing = "0.1.36"
 void = "1"
+# WASM-compatible Instant - re-exports std::time on non-WASM, provides working impl on WASM
+web-time = "1.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 socket2 = "0.6.1"

@@ -10,7 +10,8 @@ use educe::Educe;
 use futures::{future::FutureObj, task::Spawn};
 use std::future::Future;
 use std::io::Result as IoResult;
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
+use web_time::Instant;
 use tor_general_addr::unix;
 use tracing::instrument;
 
