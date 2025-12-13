@@ -20,9 +20,8 @@ use std::{
     pin::Pin,
     sync::{Arc, Mutex, Weak},
     task::{Context, Poll, Waker},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
-use tor_rtcompat::PortableInstant as Instant;
 
 use futures::Future;
 use tracing::trace;

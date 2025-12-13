@@ -230,26 +230,20 @@ fn compute_max_from_total_system_mem(mem: Result<usize, MemQueryError>) -> Qty {
         }
     };
 
-    // Threshold for high-memory systems (only valid on 64-bit)
-    let mem = {
-        cfg_if::cfg_if! {
-            if #[cfg(target_pointer_width = "64")] {
-                if mem >= 8 * GIB {
-                    // From c-tor:
-                    //
-                    // > The idea behind this value is that the amount of RAM is more than enough
-                    // > for a single relay and should allow the relay operator to run two relays
-                    // > if they have additional bandwidth available.
-                    (mem as f64 * 0.40) as usize
-                } else {
-                    (mem as f64 * 0.75) as usize
-                }
-            } else {
-                // On 32-bit systems, just use 75% of available memory
-                (mem as f64 * 0.75) as usize
-            }
-        }
+    // On 32-bit platforms, 8*GIB would overflow, so use different thresholds
+    #[cfg(target_pointer_width = "64")]
+    let mem = if mem >= 8 * GIB {
+        // From c-tor:
+        //
+        // > The idea behind this value is that the amount of RAM is more than enough
+        // > for a single relay and should allow the relay operator to run two relays
+        // > if they have additional bandwidth available.
+        (mem as f64 * 0.40) as usize
+    } else {
+        (mem as f64 * 0.75) as usize
     };
+    #[cfg(not(target_pointer_width = "64"))]
+    let mem = (mem as f64 * 0.75) as usize;
 
     // The (min, max) range to clamp `mem` to.
     let clamp = {

@@ -4,8 +4,7 @@ use std::future::Future;
 use std::num::NonZero;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
-use tor_rtcompat::PortableInstant as Instant;
+use std::time::{Duration, Instant};
 
 use futures::AsyncWrite;
 use futures::io::Error;

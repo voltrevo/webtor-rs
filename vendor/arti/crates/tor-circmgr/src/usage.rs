@@ -4,7 +4,7 @@ use rand::Rng;
 use std::fmt::{self, Display};
 use std::sync::Arc;
 use std::time::SystemTime;
-use tracing::trace;
+use tracing::{instrument, trace};
 #[cfg(not(feature = "geoip"))]
 use void::Void;
 
@@ -233,6 +233,7 @@ pub(crate) enum SupportedTunnelUsage {
 impl TargetTunnelUsage {
     /// Construct path for a given circuit purpose; return it and the
     /// usage that it _actually_ supports.
+    #[instrument(level = "trace", skip_all)]
     pub(crate) fn build_path<'a, R: Rng, RT: Runtime>(
         &self,
         rng: &mut R,
@@ -597,6 +598,7 @@ impl SupportedTunnelUsage {
                 // If the circuit is suitable for nothing, it is not long-lived.
                 false
             }
+            #[cfg(feature = "hs-common")]
             HsOnly => {
                 // This circuit's lifetime is managed by the hspool code, and later by the hsclient
                 // code.  We will not manage it within the mgr.rs code.
