@@ -227,6 +227,11 @@ impl TunnelMutableState {
     /// Return a list of [`Path`] objects describing the only circuit in this tunnel.
     ///
     /// Returns an error if the tunnel has more than one tunnel.
+    //
+    // TODO: replace Itertools::exactly_one() with a stdlib equivalent when there is one.
+    //
+    // See issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+    #[allow(unstable_name_collisions)]
     fn single_path(&self) -> Result<Arc<Path>> {
         use itertools::Itertools as _;
 
@@ -469,7 +474,7 @@ impl ClientCirc {
     /// NOTE that the Instant returned by this method is not affected by
     /// any runtime mocking; it is the output of an ordinary call to
     /// `Instant::now()`.
-    pub async fn disused_since(&self) -> Result<Option<crate::util::wasm_time::Instant>> {
+    pub async fn disused_since(&self) -> Result<Option<std::time::Instant>> {
         let (tx, rx) = oneshot::channel();
         self.command
             .unbounded_send(CtrlCmd::GetTunnelActivity { sender: tx })

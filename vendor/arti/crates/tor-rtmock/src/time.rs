@@ -22,7 +22,7 @@ use std::{
     task::{Context, Poll, Waker},
     time::{Duration, SystemTime},
 };
-use tor_rtcompat::PortableInstant as Instant;
+use tor_rtcompat::Instant;
 
 use futures::Future;
 use tracing::trace;

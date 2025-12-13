@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 use std::time::Duration;
-use tor_rtcompat::PortableInstant as Instant;
+use tor_rtcompat::Instant;
 
 /// A token bucket.
 ///

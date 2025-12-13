@@ -132,7 +132,7 @@ define_derive_deftly_module! {
           // See `mod multiplicity`.
         ${if not(all(F_INTRO, fmeta(netdoc(with)))) {
           // If the intro it has `with`, we don't check its trait impl, and this ends up unused
-          let $<selector_ $fname> = ItemSetSelector::<$F_EFFECTIVE_TYPE>::default();
+          let $<selector_ $fname> = MultiplicitySelector::<$F_EFFECTIVE_TYPE>::default();
         }}
         )
     }}
@@ -912,14 +912,14 @@ define_derive_deftly! {
     ///
     ///  * **`#[deftly(netdoc(with = "MODULE")]**:
     ///
-    ///    Instead of `ItemArgumentParseable`, the item is parsed with `MODULE::from_args`,
+    ///    Instead of `ItemArgumentParseable`, the argument is parsed with `MODULE::from_args`,
     ///    which must have the same signature as [`ItemArgumentParseable::from_args`].
     ///
     ///    With `#[deftly(netdoc(rest))]`, FUNCTION replaces
     ///    `<FIELD AS FromStr>::from_str`.
     ///
     ///    With `#[deftly(netdoc(objecte))]`, uses `MODULE::try_from`
-    ///    must have the signature `fn(Vec<u8>) -> Result<OBJECT, _>;
+    ///    which must have the signature `fn(Vec<u8>) -> Result<OBJECT, _>;
     ///    like `TryFrom::<Vec<u8>>>::try_from`.
     ///    LABEL must also be specified
     ///    unless the object also implements `ItemObjectParseable`.
@@ -966,7 +966,7 @@ define_derive_deftly! {
           $(
             let $fpatname = ${select1
               F_NORMAL { {
-                  let selector = ArgumentSetSelector::<$ftype>::default();
+                  let selector = MultiplicitySelector::<$ftype>::default();
                 ${if not(fmeta(netdoc(with))) {
                   selector.${paste_spanned $fname check_argument_value_parseable}();
                 }}
@@ -978,7 +978,7 @@ define_derive_deftly! {
                   ).map_err(args.error_handler(stringify!($fname)))?
               } }
               F_OBJECT { {
-                  let selector = ObjectSetSelector::<$ftype>::default();
+                  let selector = MultiplicitySelector::<$ftype>::default();
                   let object = object.map(|object| {
                       let data = object.decode_data()?;
                       ${if fmeta(netdoc(object(label))) {

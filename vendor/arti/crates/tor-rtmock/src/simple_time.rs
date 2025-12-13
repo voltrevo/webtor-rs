@@ -8,7 +8,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, SystemTime};
-use tor_rtcompat::PortableInstant as Instant;
+use tor_rtcompat::Instant;
 
 use derive_more::AsMut;
 use priority_queue::priority_queue::PriorityQueue;

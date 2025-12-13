@@ -38,17 +38,109 @@
 //! eventually resulting in a calling a synchronous function taking the
 //! transaction handle to perform the lion's share of the operation.
 
-use std::{num::NonZero, path::Path};
+use std::{
+    num::NonZero,
+    ops::{Add, Sub},
+    path::Path,
+    time::{Duration, SystemTime},
+};
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, Transaction, TransactionBehavior};
+use rusqlite::{
+    params,
+    types::{FromSql, FromSqlResult, ToSqlOutput, ValueRef},
+    ToSql, Transaction, TransactionBehavior,
+};
+use saturating_time::SaturatingTime;
 
 use crate::err::DatabaseError;
 
 /// Representation of a Sha256 hash in hexadecimal (upper-case)
 // TODO: Make this a real type that actually enforces the constraints.
 pub(crate) type Sha256 = String;
+
+/// A wrapper around [`SystemTime`] with convenient features.
+///
+/// Please use this type throughout the crate internally, instead of
+/// [`SystemTime`].
+///
+/// # Conversion
+///
+/// This type can be safely converted from and into a [`SystemTime`], because
+/// it is just a wrapper type.
+///
+/// # Saturating Artihmetic
+///
+/// This type implements [`Add`] and [`Sub`] for [`Duration`] and [`Timestamp`]
+/// ([`Sub`] only) using saturating artihmetic from the [`saturating_time`]
+/// crate.  It means that addition and subtraction can be safely performed
+/// without the potential risk of an unexpected panic, instead wrapping to
+/// a local maximum/minimum or [`Duration::ZERO`] depending on the type.
+///
+/// Note that we don't provide a saturating version of [`Duration`], so addition
+/// or substraction of two [`Duration`]s still needs care to avoid panics.
+///
+/// # SQLite Interaction
+///
+/// This type implements [`FromSql`] and [`ToSql`], making it convenient to
+/// integrate into SQL statements, as the database schema represents timestamps
+/// internally using a non-negative [`i64`] storing the seconds since the epoch.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub(crate) struct Timestamp(SystemTime);
+
+impl From<SystemTime> for Timestamp {
+    fn from(value: SystemTime) -> Self {
+        Self(value)
+    }
+}
+
+impl Add<Duration> for Timestamp {
+    type Output = Self;
+
+    /// Performs a saturating addition wrapping to [`SystemTime::max_value()`].
+    fn add(self, rhs: Duration) -> Self::Output {
+        Self(self.0.saturating_add(rhs))
+    }
+}
+
+impl Sub<Duration> for Timestamp {
+    type Output = Self;
+
+    /// Performs a saturating subtraction wrapping to [`SystemTime::min_value()`].
+    fn sub(self, rhs: Duration) -> Self::Output {
+        Self(self.0.saturating_sub(rhs))
+    }
+}
+
+impl Sub<Timestamp> for Timestamp {
+    type Output = Duration;
+
+    /// Performs a saturating duration_since wrapping to [`Duration::ZERO`].
+    fn sub(self, rhs: Timestamp) -> Self::Output {
+        self.0.saturating_duration_since(rhs.0)
+    }
+}
+
+impl FromSql for Timestamp {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let mut res = SystemTime::UNIX_EPOCH;
+        res = res.saturating_add(Duration::from_secs(value.as_i64()?.try_into().unwrap_or(0)));
+        Ok(Self(res))
+    }
+}
+
+impl ToSql for Timestamp {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::from(
+            self.0
+                .saturating_duration_since(SystemTime::UNIX_EPOCH)
+                .as_secs()
+                .try_into()
+                .unwrap_or(i64::MAX),
+        ))
+    }
+}
 
 /// A no-op macro just returning the supplied.
 ///
