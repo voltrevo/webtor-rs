@@ -1,4 +1,6 @@
 [toolchain]
 channel = "nightly"
+targets = ["wasm32-unknown-unknown"]
+components = ["rustfmt", "clippy"]
 # Required for edition 2024 features used by vendored Arti crates
 # Minimum version: Rust 1.86+ (nightly required for edition2024)
