@@ -634,13 +634,29 @@ where
     ) -> Poll<io::Result<usize>> {
         // First, flush any pending write buffer
         while !self.record_write_buffer.is_empty() {
-            let write_buf = self.record_write_buffer.clone();
-            match Pin::new(&mut self.inner).poll_write(cx, &write_buf) {
-                Poll::Ready(Ok(n)) => {
-                    self.record_write_buffer.drain(..n);
+            // Use mem::take to avoid clone while satisfying borrow checker
+            let mut pending = std::mem::take(&mut self.record_write_buffer);
+            let poll = Pin::new(&mut self.inner).poll_write(cx, &pending);
+            match poll {
+                Poll::Ready(Ok(0)) => {
+                    self.record_write_buffer = pending;
+                    return Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "write returned 0",
+                    )));
                 }
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Ok(n)) => {
+                    pending.drain(..n);
+                    self.record_write_buffer = pending;
+                }
+                Poll::Ready(Err(e)) => {
+                    self.record_write_buffer = pending;
+                    return Poll::Ready(Err(e));
+                }
+                Poll::Pending => {
+                    self.record_write_buffer = pending;
+                    return Poll::Pending;
+                }
             }
         }
 
@@ -681,13 +697,29 @@ where
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         // Flush pending write buffer
         while !self.record_write_buffer.is_empty() {
-            let write_buf = self.record_write_buffer.clone();
-            match Pin::new(&mut self.inner).poll_write(cx, &write_buf) {
-                Poll::Ready(Ok(n)) => {
-                    self.record_write_buffer.drain(..n);
+            // Use mem::take to avoid clone while satisfying borrow checker
+            let mut pending = std::mem::take(&mut self.record_write_buffer);
+            let poll = Pin::new(&mut self.inner).poll_write(cx, &pending);
+            match poll {
+                Poll::Ready(Ok(0)) => {
+                    self.record_write_buffer = pending;
+                    return Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "write returned 0",
+                    )));
                 }
-                Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Ok(n)) => {
+                    pending.drain(..n);
+                    self.record_write_buffer = pending;
+                }
+                Poll::Ready(Err(e)) => {
+                    self.record_write_buffer = pending;
+                    return Poll::Ready(Err(e));
+                }
+                Poll::Pending => {
+                    self.record_write_buffer = pending;
+                    return Poll::Pending;
+                }
             }
         }
 
