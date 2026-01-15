@@ -86,14 +86,10 @@ impl<S: SleepProvider> PaddingController<S> {
     pub(crate) fn decrypted_data(&self, _hop: HopNum) {}
 
     /// Report that we have decrypted a padding cell from our queue.
-    ///
-    /// In webtor-rs, we silently drop unexpected padding cells instead of treating
-    /// them as an error. This provides forward compatibility with future Tor
-    /// network behavior without requiring full maybenot integration.
     pub(crate) fn decrypted_padding(&self, _hop: HopNum) -> Result<(), crate::Error> {
-        // Silently ignore padding cells - provides receive-only tolerance
-        // without the bandwidth overhead of sending padding ourselves.
-        Ok(())
+        Err(crate::Error::CircProto(
+            "Received unexpected padding when circuit padding was not enabled.".into(),
+        ))
     }
 }
 
