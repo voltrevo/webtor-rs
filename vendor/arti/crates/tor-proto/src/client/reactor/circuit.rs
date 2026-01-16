@@ -35,6 +35,7 @@ use crate::stream::flow_ctrl::xon_xoff::reader::DrainRateRequest;
 use crate::stream::queue::{StreamQueueSender, stream_queue};
 use crate::streammap;
 use crate::tunnel::TunnelScopedCircId;
+use crate::util::err::ExcessPadding;
 use crate::util::err::ReactorError;
 use crate::util::notify::NotifySender;
 use crate::{ClockSkew, Error, Result};
@@ -1289,10 +1290,13 @@ impl Circuit {
         }
 
         if msg.cmd() == RelayCmd::DROP {
-            // Silently ignore DROP/padding cells for forward compatibility.
-            // This allows webtor-rs to tolerate padding cells from relays
-            // without requiring full circ-padding feature.
-            return Ok(None);
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "circ-padding")] {
+                    return Ok(None);
+                } else {
+                    return Err(Error::ExcessPadding(ExcessPadding::NoPaddingNegotiated, hopnum));
+                }
+            }
         }
 
         trace!(circ_id = %self.unique_id, cell = ?msg, "Received meta-cell");
