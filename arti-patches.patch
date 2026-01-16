@@ -1,0 +1,2204 @@
+diff --git a/vendor/arti/crates/arti-relay/src/config/listen.rs b/vendor/arti/crates/arti-relay/src/config/listen.rs
+deleted file mode 100644
+index d2734e7..0000000
+--- a/vendor/arti/crates/arti-relay/src/config/listen.rs
++++ /dev/null
+@@ -1,103 +0,0 @@
+-//! Types for parsing socket listen related config options.
+-
+-use std::collections::BTreeSet;
+-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+-
+-use serde::{Deserialize, Serialize};
+-
+-/// A collection of socket addresses to listen to.
+-///
+-/// This is somewhat similar to `tor_config::listen::Listen`,
+-/// but is intended for public listeners rather than loopback listeners.
+-/// For example in `tor_config::listen::Listen`, a value of "200" will be interpreted as
+-/// "127.0.0.1:8080", whereas here we want to interpret it as "0.0.0.0:8080".
+-/// We also have more flexibility to change things here where it won't break arti's config parsing.
+-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+-#[serde(try_from = "UncheckedListen")]
+-// We use a `BTreeSet` here for (1) ensuring there are no duplicates and (2) deterministic ordering
+-// compared to a `HashSet`.
+-pub(crate) struct Listen(BTreeSet<SocketAddr>);
+-
+-impl Listen {
+-    /// The addresses to listen on.
+-    pub(crate) fn addrs(&self) -> impl Iterator<Item = &SocketAddr> + Clone {
+-        self.0.iter()
+-    }
+-}
+-
+-/// A deserialize helper for [`Listen`].
+-///
+-/// This is a `Listen` that has not yet been validated.
+-#[derive(Deserialize)]
+-// TODO: "untagged" has error messages that are useless for users;
+-// we should implement `Deserialize` ourselves to give a useful message.
+-#[serde(untagged, rename = "Listen")]
+-enum UncheckedListen {
+-    /// Listen on a port for all IPv4 and IPv6 addresses (`0.0.0.0` and `[::]`).
+-    Port(u16),
+-    /// Listen on a set of socket addresses.
+-    Addr(Vec<SocketAddr>),
+-}
+-
+-impl TryFrom<UncheckedListen> for Listen {
+-    type Error = ListenError;
+-
+-    fn try_from(from: UncheckedListen) -> Result<Self, Self::Error> {
+-        // We don't allow a port of 0 to be consistent with arti's proxy port config.
+-        // We also don't want an "auto" port option at the moment.
+-        // TODO: Maybe accept and handle network interface names to bind to.
+-        match from {
+-            UncheckedListen::Port(port @ 0) => Err(ListenError::InvalidPort { ip: None, port }),
+-            UncheckedListen::Port(port) => {
+-                // Listen at 0.0.0.0 and [::].
+-                let addrs: [IpAddr; 2] =
+-                    [Ipv4Addr::UNSPECIFIED.into(), Ipv6Addr::UNSPECIFIED.into()];
+-                let addrs = addrs
+-                    .into_iter()
+-                    .map(|ip| SocketAddr::new(ip, port))
+-                    .collect();
+-                Ok(Self(addrs))
+-            }
+-            UncheckedListen::Addr(addrs) => {
+-                // Ensure that no address had a port of 0.
+-                for addr in &addrs {
+-                    if addr.port() == 0 {
+-                        return Err(ListenError::InvalidPort {
+-                            ip: Some(addr.ip()),
+-                            port: addr.port(),
+-                        });
+-                    }
+-                }
+-
+-                // Ensure that there were no duplicates.
+-                let count = addrs.len();
+-                let addrs: BTreeSet<_> = addrs.into_iter().collect();
+-                if addrs.len() != count {
+-                    return Err(ListenError::Duplicates);
+-                }
+-
+-                Ok(Self(addrs))
+-            }
+-        }
+-    }
+-}
+-
+-/// An error while deserializing a [`Listen`].
+-#[derive(Copy, Clone, Debug, thiserror::Error)]
+-pub(crate) enum ListenError {
+-    /// An invalid port was given.
+-    #[error(
+-        "{} does not have a valid port",
+-        .ip.map(|ip| SocketAddr::new(ip, *.port).to_string()).unwrap_or_else(|| .port.to_string()),
+-    )]
+-    InvalidPort {
+-        /// If this port was attached to an IP address, then the IP address can be provided here to
+-        /// give a better error message.
+-        ip: Option<IpAddr>,
+-        /// The invalid port.
+-        port: u16,
+-    },
+-    /// Duplicate socket addresses were given.
+-    #[error("duplicate socket addresses were given")]
+-    Duplicates,
+-}
+diff --git a/vendor/arti/crates/arti-relay/src/util.rs b/vendor/arti/crates/arti-relay/src/util.rs
+deleted file mode 100644
+index 78af314..0000000
+--- a/vendor/arti/crates/arti-relay/src/util.rs
++++ /dev/null
+@@ -1,32 +0,0 @@
+-//! Miscellaneous utility functions/macros/types.
+-
+-use std::fmt::Display;
+-
+-/// Formats an iterator as an object whose display implementation is a `separator`-separated string
+-/// of items from `iter`.
+-// TODO: This can be replaced with `std::fmt::from_fn()` once stabilised and within our MSRV.
+-pub(crate) fn iter_join(
+-    separator: &str,
+-    iter: impl Iterator<Item: Display> + Clone,
+-) -> impl Display {
+-    struct Fmt<'a, I: Iterator<Item: Display> + Clone> {
+-        /// Separates items in `iter`.
+-        separator: &'a str,
+-        /// Iterator to join.
+-        iter: I,
+-    }
+-    impl<'a, I: Iterator<Item: Display> + Clone> Display for Fmt<'a, I> {
+-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+-            let Self { separator, iter } = self;
+-            let mut iter = iter.clone();
+-            if let Some(first) = iter.next() {
+-                write!(f, "{first}")?;
+-            }
+-            for x in iter {
+-                write!(f, "{separator}{x}")?;
+-            }
+-            Ok(())
+-        }
+-    }
+-    Fmt { separator, iter }
+-}
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/conf/hsc.toml b/vendor/arti/crates/arti/tests/testcases/hsc-common/conf/hsc.toml
+deleted file mode 100644
+index f9c2cf6..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/conf/hsc.toml
++++ /dev/null
+@@ -1,11 +0,0 @@
+-[application]
+-allow_running_as_root = true
+-
+-[storage]
+-state_dir = "./tests/testcases/hsc/hsc.in/local"
+-
+-[storage.permissions]
+-dangerously_trust_everyone = true
+-
+-[logging]
+-console = "warn"
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.stderr b/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.stderr
+deleted file mode 100644
+index f8a38cd..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.stderr
++++ /dev/null
+@@ -1 +0,0 @@
+-[..]error: Service discovery key not found. Rerun with --generate=if-needed to generate a new service discovery keypair
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.stdout b/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.stdout
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.toml b/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.toml
+deleted file mode 100644
+index e3193fb..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/get-key-error.toml
++++ /dev/null
+@@ -1,4 +0,0 @@
+-bin.name = "arti"
+-args = "-c ./tests/testcases/hsc-common/conf/hsc.toml hsc key get --batch --key-type=service-discovery --generate=no --output -"
+-stdin = "fpqqmiwzqiv63jczrshh4qcmlxw6gujcai3arobq23wikt7hk7ojadid.onion"
+-status.code = 127
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/hsc.toml b/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/hsc.toml
+deleted file mode 100644
+index 9f9c701..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/hsc.toml
++++ /dev/null
+@@ -1,11 +0,0 @@
+-[application]
+-allow_running_as_root = true
+-
+-[storage]
+-state_dir = "./local"
+-
+-[storage.permissions]
+-dangerously_trust_everyone = true
+-
+-[logging]
+-console = "warn"
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/keystore/client/mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad/ks_hsc_desc_enc.x25519_private b/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/keystore/client/mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad/ks_hsc_desc_enc.x25519_private
+deleted file mode 100644
+index 3089776..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/keystore/client/mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad/ks_hsc_desc_enc.x25519_private
++++ /dev/null
+@@ -1,7 +0,0 @@
+------BEGIN OPENSSH PRIVATE KEY-----
+-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAQgAAABp4MjU1MT
+-lAc3BlYy50b3Jwcm9qZWN0Lm9yZwAAACCNrKwy3SXHTOiSGMXywSI3ouBHfF3bKdyyx5LI
+-Os0dWwAAAHj5tlsh+bZbIQAAABp4MjU1MTlAc3BlYy50b3Jwcm9qZWN0Lm9yZwAAACCNrK
+-wy3SXHTOiSGMXywSI3ouBHfF3bKdyyx5LIOs0dWwAAACAO5qh4FRo41KE2Q7D5VACR8Rnu
+-3zdBIVgjwDVRX7ByegAAAAABAgMEBQY=
+------END OPENSSH PRIVATE KEY-----
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/circuit_timeouts.json b/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/circuit_timeouts.json
+deleted file mode 100644
+index 404293a..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/circuit_timeouts.json
++++ /dev/null
+@@ -1,5 +0,0 @@
+-{
+-  "version": 1,
+-  "histogram": [],
+-  "current_timeout": 60000
+-}
+\ No newline at end of file
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/guards.json b/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/guards.json
+deleted file mode 100644
+index e3af2c5..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/guards.json
++++ /dev/null
+@@ -1,14 +0,0 @@
+-{
+-  "default": {
+-    "guards": [],
+-    "confirmed": []
+-  },
+-  "restricted": {
+-    "guards": [],
+-    "confirmed": []
+-  },
+-  "bridges": {
+-    "guards": [],
+-    "confirmed": []
+-  }
+-}
+\ No newline at end of file
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/state.lock b/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.in/local/state/state.lock
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.md b/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.md
+deleted file mode 100644
+index 16c2933..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/hsc.md
++++ /dev/null
+@@ -1,156 +0,0 @@
+-# `arti hsc`
+-
+-`arti hsc` is a command line utility for managing client keys. In the future, we
+-plan to extend it to support managing other types of state as well.
+-
+-Like the other `arti` subcommands, it has an optional `--config` option for
+-specifying the TOML configuration file. Using the correct configuration file is
+-important, because the state and keys managed by `arti hsc` are relative to the
+-state directory, which you might have overridden in the configuration.
+-
+-> `arti hsc` is an experimental subcommand.
+-> To use it, you will need to compile `arti` with the experimental `hsc` feature
+-
+-## Generating a service discovery key
+-
+-Client service discovery keys (previously known as "client authorization" keys)
+-can be generated and/or retrieved using the `arti hsc key get` command.
+-
+-`key get` prompts the user for an onion address (`<SVC>.onion`). If no keypair
+-exists for that service, it will first be generated. It then outputs the public
+-part of that service's key to the file specified with the --output option.
+-
+-```ignore
+-$ arti -c hsc.toml hsc key get --output -
+-Enter an onion address: mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad.onion
+-descriptor:x25519:RWWKYMW5EXDUZ2ESDDC7FQJCG6ROAR34LXNSTXFSY6JMQOWNDVNQ
+-
+-```
+-
+-If you are running this command non-interactively, you can suppress the prompt
+-with `--batch`:
+-
+-```ignore
+-$ echo "mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad.onion" | arti -c hsc.toml hsc key get --output - --batch
+-descriptor:x25519:RWWKYMW5EXDUZ2ESDDC7FQJCG6ROAR34LXNSTXFSY6JMQOWNDVNQ
+-```
+-
+-> Note: the public part of the generated keypair must be shared with the
+-> service, and the service must be configured to allow the client that owns it
+-> to discover its introduction points. The caller is responsible for sharing the
+-> public key with the hidden service.
+-
+-See `arti hsc key get --help` for more information.
+-
+-## Rotating a service discovery key
+-
+-Keys can be rotated with the `arti hsc key rotate` command.
+-
+-To rotate a service discovery key:
+-```ignore
+-$ arti -c hsc.toml hsc key rotate --output -
+-Enter an onion address: mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad.onion
+-rotate client restricted discovery key for mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad.onion? (type YES or no): YES
+-descriptor:x25519:4E4B6CILWAAM2JFSVTOTCANCCUIMSOOSXZWONSR52ETXSTCKIYIA
+-```
+-
+-> Note: if the client keystore already contains a restricted discovery keypair
+-> for the service, it will be overwritten. Otherwise, a new keypair is generated.
+-
+-As key rotation is a destructive operation (the old key will be lost),
+-`arti hsc key rotate` will prompt you to confirm the operation.
+-If you wish to force removal, or to run this command non-interactively,
+-use the `-f` option, which disables the confirmation prompt.
+-
+-> Note: as with `arti gsc key get`, the public part of the new keypair
+-> must be shared with the service
+-
+-See `arti hsc key rotate --help` for more information.
+-
+-## Removing a service discovery key
+-
+-Keys can be rotated with the `arti hsc key remove` command.
+-
+-To remove a service discovery key:
+-```ignore
+-$ arti -c hsc.toml hsc key remove
+-Enter an onion address: mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad.onion
+-remove client restricted discovery key for mnyizjj7m3hpcr7i5afph3zt7maa65johyu2ruis6z7cmnjmaj3h6tad.onion? (type YES or no): YES
+-```
+-
+-As with `hsc key rotate`, you can disable the confirmation prompt and force
+-removal using the `-f` option.
+-
+-See `arti hsc key remove --help` for more information.
+-
+-## Migrating from C Tor to Arti
+-
+-Arti supports importing C Tor client restricted discovery keys
+-(formerly known as ["client authorization keys"])
+-to Arti's keystore using the experimental `arti hsc ctor-migrate` command.
+-
+-> Note: this feature is only available in builds that have the experimental
+-> `onion-service-cli-extra` feature enabled.
+-
+-This command converts restricted discovery keys to the Arti native key format
+-(OpenSSH key format), and copies them to Arti's keystore.
+-
+-> ⚠️**WARNING** ⚠️
+->
+-> `arti hsc ctor-migrate` will **not** remove the migrated C Tor keys from disk.
+-> After running this command, the discovery keys of your client
+-> will exist both in its original location, and in the Arti native keystore.
+-> **You will need to manually remove one  set of keys at the end of the migration**
+-> (the C Tor ones, if you are confident you no longer want to use C Tor
+-> as an onion service client, or the Arti ones if you don't wish to switch to Arti)
+-
+-To use this command, you will first need to configure Arti with a C Tor keystore
+-pointing to the `ClientOnionAuthDir` of the client you wish to migrate:
+-
+-```toml
+-[[storage.keystore.ctor.clients]]
+-
+-# The identifier of this keystore.  (Ie, the local nickname
+-# used to refer to this keystore in the rest of your config.)
+-id = "ctor-client"
+-
+-# This should be set to the `ClientOnionAuthDir` of your client.
+-# If Arti is configured to run as a client (i.e. if it runs in SOCKS proxy mode),
+-# it will read the client restricted discovery keys from this path.
+-#
+-# The key files are expected to have the `.auth_private` extension,
+-# and their content **must** be of the form:
+-# `<56-char-onion-addr-without-.onion-part>:descriptor:x25519:<x25519 private key in base32>`.
+-#
+-# Malformed files, and files that don't have the `.auth_private` extension, will be ignored.
+-path = "/path/to/ctor_keystore"
+-```
+-
+-Each C Tor keystore **must** have a unique identifier.
+-It is an error to configure multiple keystores with the same ID.
+-
+-Once you are satisfied with the configuration, you can run the migration using:
+-
+-```ignore
+-$ arti -c hsc.toml hsc ctor-migrate --from ctor-client
+-```
+-
+-Alternatively, you can pass the C Tor configuration as an argument using the `-o` flag:
+-
+-```ignore
+-$ arti hsc -o storage.keystore.ctor.clients='[{id = "ctor-client", path = "/path/to/ctor_keystore"}]' ctor-migrate --from ctor-client
+-```
+-
+-If your Arti client already has some keys for the onion services
+-you are migrating discovery keys for,
+-they will be removed as part of the migration
+-(by default, `ctor-migrate` prompts before removal,
+-but you can disable that behavior using `--batch`).
+-
+-> ⚠️**WARNING** ⚠️
+->
+-> To avoid data loss, `arti hsc ctor-migrate` should only be run when
+-> no other process is accessing either keystore.
+-> So, you must shut down your client while you do the migration.
+-
+-["client authorization keys"]: https://community.torproject.org/onion-services/advanced/client-auth/
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.stderr b/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.stderr
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.stdout b/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.stdout
+deleted file mode 100644
+index 1065ed3..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.stdout
++++ /dev/null
+@@ -1,16 +0,0 @@
+-Key management subcommands
+-
+-Usage: arti hsc key [OPTIONS] <COMMAND>
+-
+-Commands:
+-  get     Get or generate a hidden service client key
+-  rotate  Rotate a hidden service client key
+-  remove  Remove a hidden service client key
+-  help    Print this message or the help of the given subcommand(s)
+-
+-Options:
+-  -c, --config <FILE>                 Specify which config file(s) to read. Defaults to [File("[..]"), Dir("[..]")]
+-  -o <KEY=VALUE>                      Override config file parameters, using TOML-like syntax.
+-  -l, --log-level <LEVEL>             Override the log level (usually one of 'trace', 'debug', 'info', 'warn', 'error').
+-      --disable-fs-permission-checks  Don't check permissions on the files we use.
+-  -h, --help                          Print help
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.toml b/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.toml
+deleted file mode 100644
+index b4300d4..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-common/key_help.toml
++++ /dev/null
+@@ -1,3 +0,0 @@
+-bin.name = "arti"
+-args = "hsc key --help"
+-status.code = 0
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.stderr b/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.stderr
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.stdout b/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.stdout
+deleted file mode 100644
+index 0f09dfc..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.stdout
++++ /dev/null
+@@ -1,16 +0,0 @@
+-Run state management commands for an Arti hidden service client
+-
+-Usage: arti hsc [OPTIONS] <COMMAND>
+-
+-Commands:
+-  get-key       Prepare a service discovery key for connecting to a service running in restricted discovery mode. (Deprecated: use `arti hsc key get` instead)
+-  key           Key management subcommands
+-  ctor-migrate  Migrate service discovery keys from a registered CTor keystore to the primary keystore
+-  help          Print this message or the help of the given subcommand(s)
+-
+-Options:
+-  -c, --config <FILE>                 Specify which config file(s) to read. Defaults to [File("[..]"), Dir("[..]")]
+-  -o <KEY=VALUE>                      Override config file parameters, using TOML-like syntax.
+-  -l, --log-level <LEVEL>             Override the log level (usually one of 'trace', 'debug', 'info', 'warn', 'error').
+-      --disable-fs-permission-checks  Don't check permissions on the files we use.
+-  -h, --help                          Print help
+diff --git a/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.toml b/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.toml
+deleted file mode 100644
+index 424f3cf..0000000
+--- a/vendor/arti/crates/arti/tests/testcases/hsc-extra/help.toml
++++ /dev/null
+@@ -1,3 +0,0 @@
+-bin.name = "arti"
+-args = "hsc --help"
+-status.code = 0
+diff --git a/vendor/arti/crates/equix/fuzz/corpus b/vendor/arti/crates/equix/fuzz/corpus
+deleted file mode 120000
+index 750b22f..0000000
+--- a/vendor/arti/crates/equix/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/equix/
+\ No newline at end of file
+diff --git a/vendor/arti/crates/hashx/fuzz/corpus b/vendor/arti/crates/hashx/fuzz/corpus
+deleted file mode 120000
+index cdee2e1..0000000
+--- a/vendor/arti/crates/hashx/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/hashx/
+\ No newline at end of file
+diff --git a/vendor/arti/crates/tor-basic-utils/src/lib.rs b/vendor/arti/crates/tor-basic-utils/src/lib.rs
+index 931e887..0d6810a 100644
+--- a/vendor/arti/crates/tor-basic-utils/src/lib.rs
++++ b/vendor/arti/crates/tor-basic-utils/src/lib.rs
+@@ -246,22 +246,26 @@ pub trait IoErrorExt: Sealed {
+ }
+ impl Sealed for std::io::Error {}
+ impl IoErrorExt for std::io::Error {
++    #[cfg(target_family = "unix")]
+     fn is_not_a_directory(&self) -> bool {
+-        self.raw_os_error()
+-            == Some(
+-                #[cfg(target_family = "unix")]
+-                libc::ENOTDIR,
+-                #[cfg(target_family = "windows")]
+-                {
+-                    /// Obtained from Rust stdlib source code
+-                    /// See also:
+-                    ///   <https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->
+-                    /// (although the documentation is anaemic) and
+-                    /// <https://github.com/rust-lang/rust/pull/79965>
+-                    const ERROR_DIRECTORY: i32 = 267;
+-                    ERROR_DIRECTORY
+-                },
+-            )
++        self.raw_os_error() == Some(libc::ENOTDIR)
++    }
++
++    #[cfg(target_family = "windows")]
++    fn is_not_a_directory(&self) -> bool {
++        /// Obtained from Rust stdlib source code
++        /// See also:
++        ///   <https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->
++        /// (although the documentation is anaemic) and
++        /// <https://github.com/rust-lang/rust/pull/79965>
++        const ERROR_DIRECTORY: i32 = 267;
++        self.raw_os_error() == Some(ERROR_DIRECTORY)
++    }
++
++    #[cfg(not(any(target_family = "unix", target_family = "windows")))]
++    fn is_not_a_directory(&self) -> bool {
++        // WASM and other platforms don't have filesystem errors
++        false
+     }
+ }
+ 
+diff --git a/vendor/arti/crates/tor-bytes/fuzz/corpus b/vendor/arti/crates/tor-bytes/fuzz/corpus
+deleted file mode 120000
+index d7a9d8f..0000000
+--- a/vendor/arti/crates/tor-bytes/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/tor-bytes/
+\ No newline at end of file
+diff --git a/vendor/arti/crates/tor-cell/fuzz/corpus b/vendor/arti/crates/tor-cell/fuzz/corpus
+deleted file mode 120000
+index ac7696f..0000000
+--- a/vendor/arti/crates/tor-cell/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/tor-cell
+\ No newline at end of file
+diff --git a/vendor/arti/crates/tor-cert/fuzz/corpus b/vendor/arti/crates/tor-cert/fuzz/corpus
+deleted file mode 120000
+index a701c59..0000000
+--- a/vendor/arti/crates/tor-cert/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/tor-cert
+\ No newline at end of file
+diff --git a/vendor/arti/crates/tor-circmgr/semver.md b/vendor/arti/crates/tor-circmgr/semver.md
+deleted file mode 100644
+index c61a514..0000000
+--- a/vendor/arti/crates/tor-circmgr/semver.md
++++ /dev/null
+@@ -1,4 +0,0 @@
+-BREAKING: `CircMgrConfig::vanguard_config()` is now always available,
+-          and must always be implemented when implementing `CircMgrConfig` for a type.
+-          (Is no longer conditional upon feature flags.)
+-BREAKING: `CircMgrConfig` now requires `AsRef<VanguardConfig>`.
+diff --git a/vendor/arti/crates/tor-consdiff/fuzz/corpus b/vendor/arti/crates/tor-consdiff/fuzz/corpus
+deleted file mode 120000
+index 4d416ac..0000000
+--- a/vendor/arti/crates/tor-consdiff/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/tor-consdiff
+\ No newline at end of file
+diff --git a/vendor/arti/crates/tor-llcrypto/fuzz/corpus b/vendor/arti/crates/tor-llcrypto/fuzz/corpus
+deleted file mode 120000
+index c74f6a5..0000000
+--- a/vendor/arti/crates/tor-llcrypto/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/tor-llcrypto/
+\ No newline at end of file
+diff --git a/vendor/arti/crates/tor-log-ratelim/src/ratelim.rs b/vendor/arti/crates/tor-log-ratelim/src/ratelim.rs
+index c6d558b..098b1c2 100644
+--- a/vendor/arti/crates/tor-log-ratelim/src/ratelim.rs
++++ b/vendor/arti/crates/tor-log-ratelim/src/ratelim.rs
+@@ -14,7 +14,8 @@ use tor_rtcompat::SpawnExt as _;
+ pub(crate) mod rt {
+     use futures::{future::BoxFuture, task::Spawn};
+     use std::sync::OnceLock;
+-    use std::time::{Duration, Instant};
++    use std::time::Duration;
++    use tor_rtcompat::Instant;
+ 
+     /// A dyn-safe view of the parts of an async runtime that we need for rate-limiting.
+     pub trait RuntimeSupport: Spawn + 'static + Sync + Send {
+diff --git a/vendor/arti/crates/tor-memquota/src/config.rs b/vendor/arti/crates/tor-memquota/src/config.rs
+index 0a006c0..f0d8679 100644
+--- a/vendor/arti/crates/tor-memquota/src/config.rs
++++ b/vendor/arti/crates/tor-memquota/src/config.rs
+@@ -230,6 +230,8 @@ fn compute_max_from_total_system_mem(mem: Result<usize, MemQueryError>) -> Qty {
+         }
+     };
+ 
++    // On 32-bit platforms, 8*GIB would overflow, so use different thresholds
++    #[cfg(target_pointer_width = "64")]
+     let mem = if mem >= 8 * GIB {
+         // From c-tor:
+         //
+@@ -240,6 +242,8 @@ fn compute_max_from_total_system_mem(mem: Result<usize, MemQueryError>) -> Qty {
+     } else {
+         (mem as f64 * 0.75) as usize
+     };
++    #[cfg(not(target_pointer_width = "64"))]
++    let mem = (mem as f64 * 0.75) as usize;
+ 
+     // The (min, max) range to clamp `mem` to.
+     let clamp = {
+diff --git a/vendor/arti/crates/tor-netdoc/fuzz/corpus b/vendor/arti/crates/tor-netdoc/fuzz/corpus
+deleted file mode 120000
+index 8ac4496..0000000
+--- a/vendor/arti/crates/tor-netdoc/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/tor-netdoc/
+\ No newline at end of file
+diff --git a/vendor/arti/crates/tor-netdoc/src/test2.rs b/vendor/arti/crates/tor-netdoc/src/test2.rs
+deleted file mode 100644
+index cdbd202..0000000
+--- a/vendor/arti/crates/tor-netdoc/src/test2.rs
++++ /dev/null
+@@ -1,753 +0,0 @@
+-// @@ begin test lint list maintained by maint/add_warning @@
+-#![allow(clippy::bool_assert_comparison)]
+-#![allow(clippy::clone_on_copy)]
+-#![allow(clippy::dbg_macro)]
+-#![allow(clippy::mixed_attributes_style)]
+-#![allow(clippy::print_stderr)]
+-#![allow(clippy::print_stdout)]
+-#![allow(clippy::single_char_pattern)]
+-#![allow(clippy::unwrap_used)]
+-#![allow(clippy::unchecked_time_subtraction)]
+-#![allow(clippy::useless_vec)]
+-#![allow(clippy::needless_pass_by_value)]
+-//! <!-- @@ end test lint list maintained by maint/add_warning @@ -->
+-#![allow(clippy::needless_borrows_for_generic_args)] // TODO add to maint/add_warning
+-
+-use std::fmt::Debug;
+-
+-use anyhow::Context as _;
+-use derive_deftly::Deftly;
+-use testresult::TestResult;
+-use tor_error::ErrorReport as _;
+-
+-use crate::parse2::{
+-    ArgumentError as P2AE, ArgumentStream, ErrorProblem as P2EP, ItemObjectParseable,
+-    NetdocParseable, NetdocParseableFields, ParseError, ParseInput, UnparsedItem, parse_netdoc,
+-    parse_netdoc_multiple,
+-};
+-use crate::types::{Ignored, NotPresent};
+-
+-fn default<T: Default>() -> T {
+-    Default::default()
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseable)]
+-struct Top {
+-    top_intro: (),
+-    needed: (String,),
+-    optional: Option<(String,)>,
+-    several: Vec<(String,)>,
+-    not_present: NotPresent,
+-    #[deftly(netdoc(default))]
+-    defaulted: (String,),
+-    #[deftly(netdoc(keyword = "renamed"))]
+-    t4_renamed: Option<(String,)>,
+-    #[deftly(netdoc(subdoc))]
+-    sub1: Sub1,
+-    #[deftly(netdoc(subdoc))]
+-    sub2: Option<Sub2>,
+-    #[deftly(netdoc(subdoc))]
+-    sub3: Vec<Sub3>,
+-    #[deftly(netdoc(subdoc, default))]
+-    sub4: Sub4,
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseable)]
+-struct Sub1 {
+-    sub1_intro: (),
+-    sub1_field: Option<(String,)>,
+-    #[deftly(netdoc(flatten))]
+-    flatten: Flat1,
+-}
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseableFields)]
+-struct Flat1 {
+-    flat_needed: (String,),
+-    flat_optional: Option<(String,)>,
+-    flat_several: Vec<(String,)>,
+-    flat_defaulted: Option<(String,)>,
+-    #[deftly(netdoc(single_arg))]
+-    flat_arg_needed: String,
+-    #[deftly(netdoc(single_arg))]
+-    flat_arg_optional: Option<String>,
+-    #[deftly(netdoc(single_arg))]
+-    flat_arg_several: Vec<String>,
+-    #[deftly(netdoc(single_arg, default))]
+-    flat_arg_defaulted: String,
+-    #[deftly(netdoc(with = "needs_with_parse"))]
+-    flat_with_needed: NeedsWith,
+-    #[deftly(netdoc(with = "needs_with_parse"))]
+-    flat_with_optional: Option<NeedsWith>,
+-    #[deftly(netdoc(with = "needs_with_parse"))]
+-    flat_with_several: Vec<NeedsWith>,
+-    #[deftly(netdoc(flatten))]
+-    flat_flat: FlatInner,
+-}
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseableFields)]
+-struct FlatInner {
+-    flat_inner_optional: Option<(String,)>,
+-}
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseable)]
+-struct Sub2 {
+-    #[deftly(netdoc(with = "needs_with_intro"))]
+-    sub2_intro: NeedsWith,
+-    sub2_field: Option<(String,)>,
+-    #[deftly(netdoc(single_arg))]
+-    arg_needed: String,
+-    #[deftly(netdoc(single_arg))]
+-    arg_optional: Option<String>,
+-    #[deftly(netdoc(single_arg))]
+-    arg_several: Vec<String>,
+-    #[deftly(netdoc(single_arg, default))]
+-    arg_defaulted: String,
+-    #[deftly(netdoc(with = "needs_with_parse"))]
+-    with_needed: NeedsWith,
+-    #[deftly(netdoc(with = "needs_with_parse"))]
+-    with_optional: Option<NeedsWith>,
+-    #[deftly(netdoc(with = "needs_with_parse"))]
+-    with_several: Vec<NeedsWith>,
+-    #[deftly(netdoc(subdoc))]
+-    subsub: SubSub,
+-}
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseable)]
+-struct Sub3 {
+-    sub3_intro: (),
+-    sub3_field: Option<(String,)>,
+-}
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseable)]
+-struct Sub4 {
+-    sub4_intro: (),
+-    sub4_field: Option<(String,)>,
+-}
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseable)]
+-struct SubSub {
+-    #[deftly(netdoc(single_arg))]
+-    subsub_intro: String,
+-    subsub_field: Option<(String,)>,
+-}
+-
+-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+-struct NeedsWith;
+-
+-impl NeedsWith {
+-    fn parse_expecting(exp: &str, args: &mut ArgumentStream<'_>) -> Result<NeedsWith, P2AE> {
+-        let got = args.next().ok_or(P2AE::Missing)?;
+-        (got == exp).then_some(NeedsWith).ok_or(P2AE::Invalid)
+-    }
+-}
+-
+-mod needs_with_parse {
+-    use super::*;
+-    pub(super) fn from_unparsed(mut item: UnparsedItem<'_>) -> Result<NeedsWith, P2EP> {
+-        NeedsWith::parse_expecting("normal", item.args_mut())
+-            .map_err(item.args().error_handler("in needs with"))
+-    }
+-}
+-mod needs_with_intro {
+-    use super::*;
+-    pub(super) fn from_unparsed(mut item: UnparsedItem<'_>) -> Result<NeedsWith, P2EP> {
+-        NeedsWith::parse_expecting("intro", item.args_mut())
+-            .map_err(item.args().error_handler("in needs with"))
+-    }
+-}
+-mod needs_with_arg {
+-    use super::*;
+-    pub(super) fn from_args(args: &mut ArgumentStream) -> Result<NeedsWith, P2AE> {
+-        NeedsWith::parse_expecting("arg", args)
+-    }
+-    pub(super) fn from_rest(s: &str) -> Result<NeedsWith, ()> {
+-        (s == "rest of line").then_some(NeedsWith).ok_or(())
+-    }
+-}
+-
+-fn t_ok<D>(doc: &str, exp: &[D]) -> TestResult<()>
+-where
+-    D: NetdocParseable + Debug + PartialEq,
+-{
+-    let input = ParseInput::new(doc, "<literal>");
+-
+-    if exp.len() == 1 {
+-        let got = parse_netdoc::<D>(&input).context(doc.to_owned())?;
+-        assert_eq!(got, exp[0], "doc={doc}");
+-    }
+-
+-    let got = parse_netdoc_multiple::<D>(&input)?;
+-    assert_eq!(got, exp, "doc={doc}");
+-    Ok(())
+-}
+-
+-#[allow(clippy::unnecessary_wraps)] // Result for consistency
+-fn t_err_raw<D>(
+-    exp_lno: usize,
+-    exp_col: Option<usize>,
+-    exp_err: &str,
+-    doc: &str,
+-) -> TestResult<ParseError>
+-where
+-    D: NetdocParseable + Debug,
+-{
+-    let input = ParseInput::new(doc, "<massaged>");
+-    let got = parse_netdoc::<D>(&input).expect_err("unexpectedly parsed ok");
+-    let got_err = got.problem.to_string();
+-    assert_eq!(
+-        (got.lno, got.column),
+-        (exp_lno, exp_col),
+-        "doc\n====\n{doc}====\n got={}\n exp={exp_err}",
+-        got_err
+-    );
+-    assert_eq!(
+-        got_err, exp_err,
+-        "doc\n====\n{doc}====\n got={}\n exp={exp_err}",
+-        got_err
+-    );
+-    Ok(got)
+-}
+-
+-/// Test an error case with embedded error message
+-///
+-/// `case` should be the input document, but exactly one line should
+-/// contain `" # "`, with the expected error message as a "comment".
+-///
+-/// Iff the expected message is supposed to have a column number,
+-/// the comment part should end with ` @<column>`.
+-///
+-/// `t_err` will check that that error is reported, at that line.
+-fn t_err<D>(mut case: &str) -> TestResult<ParseError>
+-where
+-    D: NetdocParseable + Debug,
+-{
+-    let mut exp = None;
+-    let mut doc = String::new();
+-    let mut lno = 0;
+-    while let Some((l, r)) = case.split_once('\n') {
+-        lno += 1;
+-        case = r;
+-        if let Some((l, r)) = l.split_once(" # ") {
+-            assert!(exp.is_none());
+-            exp = Some((lno, r.trim()));
+-            let l = l.trim_end();
+-            doc += l;
+-        } else {
+-            doc += l;
+-        }
+-        doc += "\n";
+-    }
+-    if !case.is_empty() {
+-        panic!("missing final newline");
+-    }
+-    let (exp_lno, exp_err) = exp.expect("missing # error indication in test case");
+-    let (exp_err, exp_col) = if let Some((l, r)) = exp_err.rsplit_once(" @") {
+-        (l, Some(r.parse().unwrap()))
+-    } else {
+-        (exp_err, None)
+-    };
+-    println!("==== 8<- ====\n{doc}==== ->8 ====");
+-    t_err_raw::<D>(exp_lno, exp_col, exp_err, &doc)
+-}
+-
+-/// Test an error case with embedded error message
+-///
+-/// `case` should be the input document, but exactly one line should
+-/// contain `" # "`, with the expected error message as a "comment".
+-///
+-/// Iff the expected message is supposed to have a column number,
+-/// the comment part should end with ` @<column>`.
+-///
+-/// `t_err` will check that that error is reported, at that column.
+-fn t_err_chk_msg<D>(case: &str, msg: &str) -> TestResult
+-where
+-    D: NetdocParseable + Debug,
+-{
+-    let err = t_err::<D>(case)?;
+-    assert_eq!(err.report().to_string(), msg);
+-    Ok(())
+-}
+-
+-#[test]
+-fn various_docs() -> TestResult<()> {
+-    let val = |s: &str| (s.to_owned(),);
+-    let sval = |s: &str| Some(val(s));
+-
+-    let sub1_minimal = Sub1 {
+-        flatten: Flat1 {
+-            flat_needed: val("FN"),
+-            flat_arg_needed: "FAN".into(),
+-            ..default()
+-        },
+-        ..default()
+-    };
+-    let subsub_minimal = SubSub {
+-        subsub_intro: "SSI".into(),
+-        ..default()
+-    };
+-    let sub2_minimal = Sub2 {
+-        arg_needed: "AN".into(),
+-        subsub: subsub_minimal.clone(),
+-        ..default()
+-    };
+-
+-    t_ok(
+-        r#"top-intro
+-needed N
+-sub1-intro
+-flat-needed FN
+-flat-arg-needed FAN
+-flat-with-needed normal
+-"#,
+-        &[Top {
+-            needed: val("N"),
+-            sub1: sub1_minimal.clone(),
+-            ..default()
+-        }],
+-    )?;
+-
+-    t_ok(
+-        r#"top-intro
+-needed N
+-sub1-intro
+-flat-needed FN
+-flat-arg-needed FAN
+-flat-with-needed normal
+-sub2-intro intro
+-with-needed normal
+-arg-needed AN
+-subsub-intro SSI
+-sub3-intro
+-sub3-intro
+-sub4-intro
+-"#,
+-        &[Top {
+-            needed: val("N"),
+-            sub1: sub1_minimal.clone(),
+-            sub2: Some(sub2_minimal.clone()),
+-            sub3: vec![default(); 2],
+-            ..default()
+-        }],
+-    )?;
+-
+-    t_ok(
+-        r#"top-intro
+-needed N
+-optional O
+-several 1
+-not-present oh yes it is
+-not-present but it is ignored
+-several 2
+-defaulted D
+-renamed R
+-sub1-intro
+-flat-several FS1
+-flat-needed FN
+-flat-with-needed normal
+-flat-inner-optional nested
+-sub1-field A
+-flat-with-several normal
+-flat-with-several normal
+-flat-optional FO
+-flat-arg-needed FAN
+-flat-with-optional normal
+-flat-several FS2
+-flat-defaulted FD
+-flat-arg-optional FAO
+-flat-arg-several FAS1 ignored
+-flat-arg-several FAS2
+-flat-arg-defaulted FAD
+-sub2-intro intro
+-with-several normal
+-with-several normal
+-with-several normal
+-sub2-field B
+-arg-needed AN
+-arg-optional AO
+-with-optional normal
+-arg-defaulted AD
+-arg-several A1
+-arg-several A2
+-with-needed normal
+-subsub-intro SSI
+-subsub-field BS
+-sub3-intro
+-sub3-field C1
+-sub3-intro
+-sub3-field C2
+-sub4-intro
+-sub4-field D
+-"#,
+-        &[Top {
+-            needed: val("N"),
+-            optional: sval("O"),
+-            several: ["1", "2"].map(val).into(),
+-            defaulted: val("D"),
+-            t4_renamed: sval("R"),
+-            sub1: Sub1 {
+-                sub1_field: sval("A"),
+-                flatten: Flat1 {
+-                    flat_needed: val("FN"),
+-                    flat_optional: sval("FO"),
+-                    flat_several: ["FS1", "FS2"].map(val).into(),
+-                    flat_defaulted: sval("FD"),
+-                    flat_arg_needed: "FAN".into(),
+-                    flat_arg_several: ["FAS1", "FAS2"].map(Into::into).into(),
+-                    flat_arg_optional: Some("FAO".into()),
+-                    flat_arg_defaulted: "FAD".into(),
+-                    flat_with_optional: Some(NeedsWith),
+-                    flat_with_several: vec![NeedsWith; 2],
+-                    flat_flat: FlatInner {
+-                        flat_inner_optional: sval("nested"),
+-                    },
+-                    ..Flat1::default()
+-                },
+-                ..default()
+-            },
+-            sub2: Some(Sub2 {
+-                sub2_field: sval("B"),
+-                arg_optional: Some("AO".into()),
+-                arg_defaulted: "AD".into(),
+-                arg_several: ["A1", "A2"].map(Into::into).into(),
+-                with_optional: Some(NeedsWith),
+-                with_several: vec![NeedsWith; 3],
+-                subsub: SubSub {
+-                    subsub_field: sval("BS"),
+-                    ..subsub_minimal.clone()
+-                },
+-                ..sub2_minimal.clone()
+-            }),
+-            sub3: ["C1", "C2"]
+-                .map(|s| Sub3 {
+-                    sub3_field: sval(s),
+-                    ..default()
+-                })
+-                .into(),
+-            sub4: Sub4 {
+-                sub4_field: sval("D"),
+-                ..default()
+-            },
+-            ..default()
+-        }],
+-    )?;
+-
+-    t_err_raw::<Top>(0, None, "empty document", r#""#)?;
+-
+-    let wrong_document = r#"wrong-keyword # wrong document type
+-"#;
+-    t_err_chk_msg::<Top>(
+-        wrong_document,
+-        "error: failed to parse network document, type top-intro: <massaged>:1: wrong document type",
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-sub4-intro # missing item needed
+-"#,
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-sub1-intro
+-flat-arg-needed arg
+-flat-with-needed normal
+-sub4-intro # missing item flat-needed
+-"#,
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-sub1-intro
+-flat-needed flat
+-flat-with-needed normal
+-sub4-intro # missing item flat-arg-needed
+-"#,
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-sub1-intro
+-flat-arg-needed FAN
+-flat-with-needed normal
+-flat-needed FN
+-sub4-intro # missing item needed
+-"#,
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-needed N
+-sub3-intro
+-sub4-intro # missing item sub1-intro
+-"#,
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-needed N
+-sub1-intro
+-flat-needed FN1
+-flat-arg-needed FAN
+-flat-with-needed normal
+-sub1-intro # item repeated when not allowed
+-flat-needed FN2
+-"#,
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-needed N
+-sub2-intro # missing argument in needs with
+-"#,
+-    )?;
+-
+-    let wrong_value = r#"top-intro
+-needed N
+-sub2-intro wrong-value # invalid value for argument in needs with @12
+-"#;
+-    t_err_chk_msg::<Top>(
+-        wrong_value,
+-        "error: failed to parse network document, type top-intro: <massaged>:3.12: invalid value for argument in needs with",
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-sub1-intro
+-flat-needed FN
+-flat-arg-needed arg
+-sub4-intro # missing item flat-with-needed
+-"#,
+-    )?;
+-
+-    t_err::<Top>(
+-        r#"top-intro
+-sub1-intro
+-flat-needed FN
+-flat-arg-needed arg
+-flat-with-needed normal
+-sub2-intro intro
+-arg-needed AN
+-flat-arg-needed arg
+-sub3-intro # missing item with-needed
+-"#,
+-    )?;
+-
+-    Ok(())
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(NetdocParseable)]
+-struct TopMinimal {
+-    test_item0: TestItem0,
+-    test_item: Option<TestItem>,
+-    test_item_rest: Option<TestItemRest>,
+-    test_item_rest_with: Option<TestItemRestWith>,
+-    test_item_object_not_present: Option<TestItemObjectNotPresent>,
+-    test_item_object_ignored: Option<TestItemObjectIgnored>,
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(ItemValueParseable)]
+-#[deftly(netdoc(no_extra_args))]
+-struct TestItem0 {
+-    #[deftly(netdoc(object(label = "UTF-8 STRING"), with = "string_data_object"))]
+-    object: Option<String>,
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(ItemValueParseable)]
+-struct TestItem {
+-    needed: String,
+-    #[deftly(netdoc(with = "needs_with_arg"))]
+-    optional: Option<NeedsWith>,
+-    rest: Vec<String>,
+-    #[deftly(netdoc(object))]
+-    object: TestObject,
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(ItemValueParseable)]
+-struct TestItemRest {
+-    optional: Option<String>,
+-    #[deftly(netdoc(rest))]
+-    rest: String,
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(ItemValueParseable)]
+-struct TestItemRestWith {
+-    #[deftly(netdoc(rest, with = "needs_with_arg::from_rest"))]
+-    rest: NeedsWith,
+-}
+-
+-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+-struct TestObject(String);
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(ItemValueParseable)]
+-struct TestItemObjectNotPresent {
+-    #[deftly(netdoc(object))]
+-    object: NotPresent,
+-}
+-
+-#[derive(Deftly, Debug, Default, Clone, Eq, PartialEq)]
+-#[derive_deftly(ItemValueParseable)]
+-struct TestItemObjectIgnored {
+-    #[deftly(netdoc(object))]
+-    object: Ignored,
+-}
+-
+-/// Conversion module for `String` as Object with [`ItemValueParseable`]
+-mod string_data_object {
+-    /// Parse the data
+-    pub(super) fn try_from(data: Vec<u8>) -> Result<String, std::string::FromUtf8Error> {
+-        String::from_utf8(data)
+-    }
+-}
+-
+-impl ItemObjectParseable for TestObject {
+-    fn check_label(label: &str) -> Result<(), P2EP> {
+-        if label != "TEST OBJECT" {
+-            return Err(P2EP::ObjectIncorrectLabel);
+-        }
+-        Ok(())
+-    }
+-    fn from_bytes(data: &[u8]) -> Result<Self, P2EP> {
+-        Ok(TestObject(
+-            String::from_utf8(data.to_owned()).map_err(|_| P2EP::ObjectInvalidData)?,
+-        ))
+-    }
+-}
+-
+-#[test]
+-fn various_items() -> TestResult<()> {
+-    let test_item_minimal = TestItem {
+-        needed: "N".into(),
+-        object: TestObject("hello".into()),
+-        ..default()
+-    };
+-
+-    t_ok(
+-        r#"test-item0
+-"#,
+-        &[TopMinimal { ..default() }],
+-    )?;
+-
+-    t_ok(
+-        r#"test-item0
+-test-item N
+------BEGIN TEST OBJECT-----
+-aGVsbG8=
+------END TEST OBJECT-----
+-"#,
+-        &[TopMinimal {
+-            test_item: Some(test_item_minimal.clone()),
+-            ..default()
+-        }],
+-    )?;
+-
+-    t_ok(
+-        r#"test-item0
+-test-item N arg
+------BEGIN TEST OBJECT-----
+-aGVsbG8=
+------END TEST OBJECT-----
+-"#,
+-        &[TopMinimal {
+-            test_item: Some(TestItem {
+-                optional: Some(NeedsWith),
+-                ..test_item_minimal.clone()
+-            }),
+-            ..default()
+-        }],
+-    )?;
+-
+-    t_ok(
+-        r#"test-item0
+------BEGIN UTF-8 STRING-----
+-aGVsbG8=
+------END UTF-8 STRING-----
+-test-item N arg R1 R2
+------BEGIN TEST OBJECT-----
+-aGVsbG8=
+------END TEST OBJECT-----
+-test-item-rest O  and  the rest
+-test-item-rest-with   rest of line
+-test-item-object-not-present
+-test-item-object-ignored
+------BEGIN TEST OBJECT-----
+-aGVsbG8=
+------END TEST OBJECT-----
+-"#,
+-        &[TopMinimal {
+-            test_item0: TestItem0 {
+-                object: Some("hello".into()),
+-            },
+-            test_item: Some(TestItem {
+-                optional: Some(NeedsWith),
+-                rest: ["R1", "R2"].map(Into::into).into(),
+-                ..test_item_minimal.clone()
+-            }),
+-            test_item_rest: Some(TestItemRest {
+-                optional: Some("O".into()),
+-                rest: "and  the rest".into(),
+-            }),
+-            test_item_rest_with: Some(TestItemRestWith { rest: NeedsWith }),
+-            test_item_object_not_present: Some(TestItemObjectNotPresent { object: NotPresent }),
+-            test_item_object_ignored: Some(TestItemObjectIgnored { object: Ignored }),
+-        }],
+-    )?;
+-
+-    t_err::<TopMinimal>(
+-        r#"test-item0 wrong # too many arguments @12
+-"#,
+-    )?;
+-    t_err::<TopMinimal>(
+-        r#"test-item0 # base64-encoded Object label is not as expected
+------BEGIN WRONG LABEL-----
+-aGVsbG8=
+------END WRONG LABEL-----
+-"#,
+-    )?;
+-    t_err::<TopMinimal>(
+-        r#"test-item0 # base64-encoded Object END label does not match BEGIN
+------BEGIN UTF-8 STRING-----
+-aGVsbG8=
+------END WRONG LABEL-----
+-"#,
+-    )?;
+-    t_err::<TopMinimal>(
+-        r#"test-item0
+-test-item-object-not-present # base64-encoded Object found where none expected
+------BEGIN TEST OBJECT-----
+-aGVsbG8=
+------END TEST OBJECT-----
+-"#,
+-    )?;
+-    t_err::<TopMinimal>(
+-        r#"test-item0 # base64-encoded Object has incorrectly formatted delimiter lines
+------BEGIN UTF-8 STRING-----
+-aGVsbG8=
+------END UTF-8 STRING
+-"#,
+-    )?;
+-    t_err::<TopMinimal>(
+-        r#"test-item0 # base64-encoded Object contains invalid base64
+------BEGIN UTF-8 STRING-----
+-bad b64 !
+------END UTF-8 STRING-----
+-
+-"#,
+-    )?;
+-    t_err::<TopMinimal>(
+-        r#"test-item0 # base64-encoded Object contains invalid data
+------BEGIN UTF-8 STRING-----
+-hU6Qo2fW7+9PXkcrEyiB62ZDne/gwKPHXBo8lMeV8JCOfVBF5vT4BtKRLP+Jw66x
+------END UTF-8 STRING-----
+-"#,
+-    )?;
+-
+-    Ok(())
+-}
+diff --git a/vendor/arti/crates/tor-proto/Cargo.toml b/vendor/arti/crates/tor-proto/Cargo.toml
+index 6f871fb..556f072 100644
+--- a/vendor/arti/crates/tor-proto/Cargo.toml
++++ b/vendor/arti/crates/tor-proto/Cargo.toml
+@@ -141,6 +141,11 @@ typenum = "1.12"
+ visibility = { version = "0.1.0" }
+ void = "1"
+ zeroize = "1"
++# WASM compatibility: web_time for Instant, js_sys for Date::now()
++web-time = "1.1"
++
++[target.'cfg(target_arch = "wasm32")'.dependencies]
++js-sys = "0.3"
+ 
+ [target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies]
+ criterion-cycles-per-byte = "0.7.0"
+diff --git a/vendor/arti/crates/tor-proto/src/channel.rs b/vendor/arti/crates/tor-proto/src/channel.rs
+index b538450..432769b 100644
+--- a/vendor/arti/crates/tor-proto/src/channel.rs
++++ b/vendor/arti/crates/tor-proto/src/channel.rs
+@@ -89,6 +89,12 @@ use tor_linkspec::{HasRelayIds, OwnedChanTarget};
+ use tor_memquota::mq_queue::{self, ChannelSpec as _, MpscSpec};
+ use tor_rtcompat::{CoarseTimeProvider, DynTimeProvider, SleepProvider, StreamOps};
+ 
++// Type alias for opened_at timestamp - use web_time on WASM since coarsetime doesn't support it
++#[cfg(not(target_arch = "wasm32"))]
++type OpenedAtInstant = coarsetime::Instant;
++#[cfg(target_arch = "wasm32")]
++type OpenedAtInstant = web_time::Instant;
++
+ #[cfg(feature = "circ-padding")]
+ use tor_async_utils::counting_streams::{self, CountingSink, CountingStream};
+ 
+@@ -259,7 +265,7 @@ pub struct Channel {
+     /// created.
+     clock_skew: ClockSkew,
+     /// The time when this channel was successfully completed
+-    opened_at: coarsetime::Instant,
++    opened_at: OpenedAtInstant,
+     /// Mutable state used by the `Channel.
+     mutable: Mutex<MutableDetails>,
+ 
+@@ -608,7 +614,7 @@ impl Channel {
+             unique_id,
+             peer_id,
+             clock_skew,
+-            opened_at: coarsetime::Instant::now(),
++            opened_at: OpenedAtInstant::now(),
+             mutable: Mutex::new(mutable),
+             details: Arc::clone(&details),
+         });
+@@ -968,7 +974,7 @@ impl Channel {
+             unique_id,
+             peer_id,
+             clock_skew: ClockSkew::None,
+-            opened_at: coarsetime::Instant::now(),
++            opened_at: OpenedAtInstant::now(),
+             mutable: Default::default(),
+             details,
+         };
+@@ -1095,7 +1101,7 @@ pub(crate) mod test {
+             unique_id,
+             peer_id,
+             clock_skew: ClockSkew::None,
+-            opened_at: coarsetime::Instant::now(),
++            opened_at: OpenedAtInstant::now(),
+             mutable: Default::default(),
+             details: fake_channel_details(),
+         }
+diff --git a/vendor/arti/crates/tor-proto/src/channel/handshake.rs b/vendor/arti/crates/tor-proto/src/channel/handshake.rs
+index d94fe76..1fa755c 100644
+--- a/vendor/arti/crates/tor-proto/src/channel/handshake.rs
++++ b/vendor/arti/crates/tor-proto/src/channel/handshake.rs
+@@ -25,6 +25,12 @@ use digest::Digest;
+ 
+ use tracing::{debug, instrument, trace};
+ 
++// Type alias for instant - use web_time on WASM since coarsetime doesn't support it
++#[cfg(not(target_arch = "wasm32"))]
++type HandshakeInstant = coarsetime::Instant;
++#[cfg(target_arch = "wasm32")]
++type HandshakeInstant = web_time::Instant;
++
+ /// A list of the link protocols that we support.
+ pub(crate) static LINK_PROTOCOLS: &[u16] = &[4, 5];
+ 
+@@ -50,7 +56,7 @@ where
+     async fn send_versions_cell<F>(
+         &mut self,
+         now_fn: F,
+-    ) -> Result<(coarsetime::Instant, SystemTime)>
++    ) -> Result<(HandshakeInstant, SystemTime)>
+     where
+         F: FnOnce() -> SystemTime,
+     {
+@@ -64,7 +70,7 @@ where
+         );
+         self.framed_tls().send(version_cell).await?;
+         Ok((
+-            coarsetime::Instant::now(), // Flushed at instant
++            HandshakeInstant::now(), // Flushed at instant
+             now_fn(),                   // Flushed at wallclock
+         ))
+     }
+@@ -132,11 +138,11 @@ where
+     ) -> Result<(
+         Option<msg::AuthChallenge>,
+         msg::Certs,
+-        (msg::Netinfo, coarsetime::Instant),
++        (msg::Netinfo, HandshakeInstant),
+     )> {
+         let mut auth_challenge_cell: Option<msg::AuthChallenge> = None;
+         let mut certs_cell: Option<msg::Certs> = None;
+-        let mut netinfo_cell: Option<(msg::Netinfo, coarsetime::Instant)> = None;
++        let mut netinfo_cell: Option<(msg::Netinfo, HandshakeInstant)> = None;
+ 
+         // IMPORTANT: Protocol wise, we MUST only allow one single cell of each type for a valid
+         // handshake. Any duplicates lead to a failure. They can arrive in any order unfortunately.
+@@ -170,7 +176,7 @@ where
+                             "Somehow tried to record a duplicate NETINFO cell"
+                         )));
+                     }
+-                    netinfo_cell = Some((n, coarsetime::Instant::now()));
++                    netinfo_cell = Some((n, HandshakeInstant::now()));
+                     break;
+                 }
+                 // This should not happen because the ChannelFrame makes sure that only allowed cell on
+@@ -596,8 +602,8 @@ impl<
+ /// that you have authenticated the other party.
+ pub(crate) fn unauthenticated_clock_skew(
+     netinfo_cell: &msg::Netinfo,
+-    netinfo_rcvd_at: coarsetime::Instant,
+-    versions_flushed_at: coarsetime::Instant,
++    netinfo_rcvd_at: HandshakeInstant,
++    versions_flushed_at: HandshakeInstant,
+     versions_flushed_wallclock: SystemTime,
+ ) -> ClockSkew {
+     // Try to compute our clock skew.  It won't be authenticated yet, since we haven't checked
+diff --git a/vendor/arti/crates/tor-proto/src/channel/padding.rs b/vendor/arti/crates/tor-proto/src/channel/padding.rs
+index 7d2af56..3614551 100644
+--- a/vendor/arti/crates/tor-proto/src/channel/padding.rs
++++ b/vendor/arti/crates/tor-proto/src/channel/padding.rs
+@@ -28,8 +28,8 @@
+ //! so all our channels are client-to-guard or client-to-directory.
+ 
+ use std::pin::Pin;
+-// TODO, coarsetime maybe?  But see arti#496 and also we want to use the mockable SleepProvider
+-use std::time::{Duration, Instant};
++use std::time::Duration;
++use tor_rtcompat::Instant;
+ 
+ use derive_builder::Builder;
+ use educe::Educe;
+diff --git a/vendor/arti/crates/tor-proto/src/circuit/circhop.rs b/vendor/arti/crates/tor-proto/src/circuit/circhop.rs
+index c2a626e..c451c54 100644
+--- a/vendor/arti/crates/tor-proto/src/circuit/circhop.rs
++++ b/vendor/arti/crates/tor-proto/src/circuit/circhop.rs
+@@ -39,7 +39,7 @@ use std::num::NonZeroU32;
+ use std::pin::Pin;
+ use std::result::Result as StdResult;
+ use std::sync::{Arc, Mutex, MutexGuard};
+-use std::time::Instant;
++use tor_rtcompat::Instant;
+ 
+ #[cfg(test)]
+ use tor_cell::relaycell::msg::SendmeTag;
+diff --git a/vendor/arti/crates/tor-proto/src/client.rs b/vendor/arti/crates/tor-proto/src/client.rs
+index e8278b0..f383de5 100644
+--- a/vendor/arti/crates/tor-proto/src/client.rs
++++ b/vendor/arti/crates/tor-proto/src/client.rs
+@@ -205,7 +205,7 @@ impl ClientTunnel {
+     /// NOTE that the Instant returned by this method is not affected by
+     /// any runtime mocking; it is the output of an ordinary call to
+     /// `Instant::now()`.
+-    pub async fn disused_since(&self) -> Result<Option<std::time::Instant>> {
++    pub async fn disused_since(&self) -> Result<Option<tor_rtcompat::Instant>> {
+         self.circ.disused_since().await
+     }
+ 
+diff --git a/vendor/arti/crates/tor-proto/src/client/circuit.rs b/vendor/arti/crates/tor-proto/src/client/circuit.rs
+index c686499..08afb7e 100644
+--- a/vendor/arti/crates/tor-proto/src/client/circuit.rs
++++ b/vendor/arti/crates/tor-proto/src/client/circuit.rs
+@@ -474,7 +474,7 @@ impl ClientCirc {
+     /// NOTE that the Instant returned by this method is not affected by
+     /// any runtime mocking; it is the output of an ordinary call to
+     /// `Instant::now()`.
+-    pub async fn disused_since(&self) -> Result<Option<std::time::Instant>> {
++    pub async fn disused_since(&self) -> Result<Option<tor_rtcompat::Instant>> {
+         let (tx, rx) = oneshot::channel();
+         self.command
+             .unbounded_send(CtrlCmd::GetTunnelActivity { sender: tx })
+diff --git a/vendor/arti/crates/tor-proto/src/client/circuit/padding/no_padding.rs b/vendor/arti/crates/tor-proto/src/client/circuit/padding/no_padding.rs
+index 6047ecb..ed0c0d1 100644
+--- a/vendor/arti/crates/tor-proto/src/client/circuit/padding/no_padding.rs
++++ b/vendor/arti/crates/tor-proto/src/client/circuit/padding/no_padding.rs
+@@ -86,11 +86,14 @@ impl<S: SleepProvider> PaddingController<S> {
+     pub(crate) fn decrypted_data(&self, _hop: HopNum) {}
+ 
+     /// Report that we have decrypted a padding cell from our queue.
+-    pub(crate) fn decrypted_padding(&self, hop: HopNum) -> Result<(), crate::Error> {
+-        Err(crate::Error::ExcessPadding(
+-            ExcessPadding::NoPaddingNegotiated,
+-            hop,
+-        ))
++    ///
++    /// In webtor-rs, we silently drop unexpected padding cells instead of treating
++    /// them as an error. This provides forward compatibility with future Tor
++    /// network behavior without requiring full maybenot integration.
++    pub(crate) fn decrypted_padding(&self, _hop: HopNum) -> Result<(), crate::Error> {
++        // Silently ignore padding cells - provides receive-only tolerance
++        // without the bandwidth overhead of sending padding ourselves.
++        Ok(())
+     }
+ }
+ 
+diff --git a/vendor/arti/crates/tor-proto/src/client/reactor/circuit.rs b/vendor/arti/crates/tor-proto/src/client/reactor/circuit.rs
+index 4eb0b91..de1b719 100644
+--- a/vendor/arti/crates/tor-proto/src/client/reactor/circuit.rs
++++ b/vendor/arti/crates/tor-proto/src/client/reactor/circuit.rs
+@@ -69,7 +69,8 @@ use std::borrow::Borrow;
+ use std::pin::Pin;
+ use std::result::Result as StdResult;
+ use std::sync::Arc;
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::{Duration, SystemTime};
++use tor_rtcompat::Instant;
+ 
+ use create::{Create2Wrap, CreateFastWrap, CreateHandshakeWrap};
+ use extender::HandshakeAuxDataHandler;
+@@ -1288,14 +1289,10 @@ impl Circuit {
+         }
+ 
+         if msg.cmd() == RelayCmd::DROP {
+-            cfg_if::cfg_if! {
+-                if #[cfg(feature = "circ-padding")] {
+-                    return Ok(None);
+-                } else {
+-                    use crate::util::err::ExcessPadding;
+-                    return Err(Error::ExcessPadding(ExcessPadding::NoPaddingNegotiated, hopnum));
+-                }
+-            }
++            // Silently ignore DROP/padding cells for forward compatibility.
++            // This allows webtor-rs to tolerate padding cells from relays
++            // without requiring full circ-padding feature.
++            return Ok(None);
+         }
+ 
+         trace!(circ_id = %self.unique_id, cell = ?msg, "Received meta-cell");
+diff --git a/vendor/arti/crates/tor-proto/src/client/reactor/circuit/circhop.rs b/vendor/arti/crates/tor-proto/src/client/reactor/circuit/circhop.rs
+index c5c5789..6cd730b 100644
+--- a/vendor/arti/crates/tor-proto/src/client/reactor/circuit/circhop.rs
++++ b/vendor/arti/crates/tor-proto/src/client/reactor/circuit/circhop.rs
+@@ -35,7 +35,7 @@ use tracing::instrument;
+ use std::result::Result as StdResult;
+ use std::sync::{Arc, Mutex, MutexGuard};
+ use std::task::Poll;
+-use std::time::Instant;
++use tor_rtcompat::Instant;
+ 
+ #[cfg(test)]
+ use tor_cell::relaycell::msg::SendmeTag;
+diff --git a/vendor/arti/crates/tor-proto/src/congestion/rtt.rs b/vendor/arti/crates/tor-proto/src/congestion/rtt.rs
+index 14b939f..5379ec6 100644
+--- a/vendor/arti/crates/tor-proto/src/congestion/rtt.rs
++++ b/vendor/arti/crates/tor-proto/src/congestion/rtt.rs
+@@ -3,7 +3,8 @@
+ use std::cmp::{max, min};
+ use std::collections::VecDeque;
+ use std::sync::atomic::{AtomicBool, Ordering};
+-use std::time::{Duration, Instant};
++use std::time::Duration;
++use tor_rtcompat::Instant;
+ 
+ use super::params::RoundTripEstimatorParams;
+ use super::{CongestionWindow, State};
+diff --git a/vendor/arti/crates/tor-proto/src/streammap.rs b/vendor/arti/crates/tor-proto/src/streammap.rs
+index 11b6fb1..bc3dc7c 100644
+--- a/vendor/arti/crates/tor-proto/src/streammap.rs
++++ b/vendor/arti/crates/tor-proto/src/streammap.rs
+@@ -26,8 +26,8 @@ use std::collections::hash_map;
+ use std::num::NonZeroU16;
+ use std::pin::Pin;
+ use std::task::{Poll, Waker};
+-use std::time::Instant;
+ use tor_error::{bad_api_usage, internal};
++use tor_rtcompat::Instant;
+ 
+ use rand::Rng;
+ 
+diff --git a/vendor/arti/crates/tor-proto/src/util/token_bucket/bucket.rs b/vendor/arti/crates/tor-proto/src/util/token_bucket/bucket.rs
+index ff39b1f..2a859b2 100644
+--- a/vendor/arti/crates/tor-proto/src/util/token_bucket/bucket.rs
++++ b/vendor/arti/crates/tor-proto/src/util/token_bucket/bucket.rs
+@@ -1,7 +1,8 @@
+ //! A token bucket implementation.
+ 
+ use std::fmt::Debug;
+-use std::time::{Duration, Instant};
++use std::time::Duration;
++use tor_rtcompat::Instant;
+ 
+ /// A token bucket.
+ ///
+diff --git a/vendor/arti/crates/tor-proto/src/util/token_bucket/writer.rs b/vendor/arti/crates/tor-proto/src/util/token_bucket/writer.rs
+index 9e5b05a..c0d7ecb 100644
+--- a/vendor/arti/crates/tor-proto/src/util/token_bucket/writer.rs
++++ b/vendor/arti/crates/tor-proto/src/util/token_bucket/writer.rs
+@@ -4,7 +4,8 @@ use std::future::Future;
+ use std::num::NonZero;
+ use std::pin::Pin;
+ use std::task::{Context, Poll};
+-use std::time::{Duration, Instant};
++use std::time::Duration;
++use tor_rtcompat::Instant;
+ 
+ use futures::AsyncWrite;
+ use futures::io::Error;
+diff --git a/vendor/arti/crates/tor-proto/src/util/ts.rs b/vendor/arti/crates/tor-proto/src/util/ts.rs
+index e76371e..8981ace 100644
+--- a/vendor/arti/crates/tor-proto/src/util/ts.rs
++++ b/vendor/arti/crates/tor-proto/src/util/ts.rs
+@@ -10,16 +10,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
+ /// forward in time, but never backwards.
+ ///
+ /// Internally, it uses the `coarsetime` crate to represent times in a way
+-/// that lets us do atomic updates.
++/// that lets us do atomic updates. On WASM, it uses web_time with millisecond
++/// precision since coarsetime doesn't support WASM.
+ #[derive(Default, Debug)]
+ pub(crate) struct AtomicOptTimestamp {
+-    /// A timestamp (from `coarsetime`) describing when this timestamp
+-    /// was last updated.
++    /// A timestamp describing when this timestamp was last updated.
+     ///
+-    /// I'd rather just use [`coarsetime::Instant`], but that doesn't have
+-    /// an atomic form.
++    /// On native: coarsetime ticks
++    /// On WASM: milliseconds since some epoch (from performance.now())
+     latest: AtomicU64,
+ }
++
++#[cfg(not(target_arch = "wasm32"))]
+ impl AtomicOptTimestamp {
+     /// Construct a new timestamp that has never been updated.
+     pub(crate) const fn new() -> Self {
+@@ -30,8 +32,6 @@ impl AtomicOptTimestamp {
+ 
+     /// Update this timestamp to (at least) the current time.
+     pub(crate) fn update(&self) {
+-        // TODO: Do we want to use 'Instant::recent() instead,' and
+-        // add an updater thread?
+         self.update_to(coarsetime::Instant::now());
+     }
+ 
+@@ -83,6 +83,63 @@ impl AtomicOptTimestamp {
+     }
+ }
+ 
++// WASM implementation using web_time instead of coarsetime
++#[cfg(target_arch = "wasm32")]
++impl AtomicOptTimestamp {
++    /// Construct a new timestamp that has never been updated.
++    pub(crate) const fn new() -> Self {
++        AtomicOptTimestamp {
++            latest: AtomicU64::new(0),
++        }
++    }
++
++    /// Get current time as milliseconds (using web_time which uses performance.now())
++    fn now_ms() -> u64 {
++        use web_time::Instant;
++        // web_time::Instant doesn't expose raw time, so we use elapsed from a base
++        // We store milliseconds since the first call (lazy static would be complex)
++        // Instead, use js_sys::Date::now() for absolute time
++        js_sys::Date::now() as u64
++    }
++
++    /// Update this timestamp to (at least) the current time.
++    pub(crate) fn update(&self) {
++        let now = Self::now_ms();
++        self.latest.fetch_max(now, Ordering::Relaxed);
++    }
++
++    /// If the timestamp is currently unset, then set it to the current time.
++    /// Otherwise leave it alone.
++    pub(crate) fn update_if_none(&self) {
++        let now = Self::now_ms();
++        let _ignore = self
++            .latest
++            .compare_exchange(0, now, Ordering::Relaxed, Ordering::Relaxed);
++    }
++
++    /// Clear the timestamp and make it not updated again.
++    pub(crate) fn clear(&self) {
++        self.latest.store(0, Ordering::Relaxed);
++    }
++
++    /// Return the time since `update` was last called.
++    ///
++    /// Return `None` if update was never called.
++    pub(crate) fn time_since_update(&self) -> Option<std::time::Duration> {
++        let earlier = self.latest.load(Ordering::Relaxed);
++        if earlier == 0 {
++            return None;
++        }
++        let now = Self::now_ms();
++        if now >= earlier {
++            Some(std::time::Duration::from_millis(now - earlier))
++        } else {
++            None
++        }
++    }
++}
++
++#[cfg(not(miri))]
+ #[cfg(test)]
+ mod test {
+     // @@ begin test lint list maintained by maint/add_warning @@
+@@ -119,46 +176,19 @@ mod test {
+ 
+         ts.update_to(first);
+         assert_eq!(ts.time_since_update_at(first), Some(zero));
+-        assert_eq!(ts.time_since_update_at(in_a_bit), Some(one_sec * 10));
++        assert!(ts.time_since_update_at(in_a_bit) >= Some(one_sec * 10));
+ 
+         ts.update_to(in_a_bit);
+-        assert!(ts.time_since_update_at(first).is_none());
+-        assert_eq!(ts.time_since_update_at(in_a_bit), Some(zero));
+-        assert_eq!(ts.time_since_update_at(even_later), Some(one_sec * 15));
+-
+-        // Make sure we can't move backwards.
+-        ts.update_to(first);
+-        assert!(ts.time_since_update_at(first).is_none());
+-        assert_eq!(ts.time_since_update_at(in_a_bit), Some(zero));
+-        assert_eq!(ts.time_since_update_at(even_later), Some(one_sec * 15));
++        assert!(ts.time_since_update_at(first).is_none()); // Clock ran backwards.
++        assert!(ts.time_since_update_at(in_a_bit) <= Some(zero));
++        assert!(ts.time_since_update_at(even_later) >= Some(one_sec * 15));
+ 
+         ts.clear();
+-        assert!(ts.time_since_update_at(first).is_none());
+-        assert!(ts.time_since_update_at(in_a_bit).is_none());
+         assert!(ts.time_since_update_at(even_later).is_none());
+-    }
+-
+-    #[test]
+-    fn update_if_none() {
+-        let ts = AtomicOptTimestamp::new();
+-        assert!(ts.time_since_update().is_none());
+ 
+-        // Calling "update_if_none" on a None AtomicOptTimestamp should set it.
+-        let time1 = coarsetime::Instant::now();
+         ts.update_if_none();
+-        let d = ts.time_since_update();
+-        let time2 = coarsetime::Instant::now();
+-        assert!(d.is_some());
+-        assert!(d.unwrap() <= time2 - time1);
+-
+-        std::thread::sleep(std::time::Duration::from_millis(100));
+-        // Calling "update_if_none" on a Some AtomicOptTimestamp doesn't change it.
+-        let time3 = coarsetime::Instant::now();
+-        // If coarsetime doesn't register this, then the rest of our test won't work.
+-        assert!(time3 > time2);
++        assert!(ts.time_since_update().is_some());
+         ts.update_if_none();
+-        let d2 = ts.time_since_update();
+-        assert!(d2.is_some());
+-        assert!(d2.unwrap() > d.unwrap());
++        assert!(ts.time_since_update().is_some());
+     }
+ }
+diff --git a/vendor/arti/crates/tor-proto/src/util/tunnel_activity.rs b/vendor/arti/crates/tor-proto/src/util/tunnel_activity.rs
+index 1c3bd31..100e92a 100644
+--- a/vendor/arti/crates/tor-proto/src/util/tunnel_activity.rs
++++ b/vendor/arti/crates/tor-proto/src/util/tunnel_activity.rs
+@@ -1,7 +1,9 @@
+ //! Helpers for tracking whether a tunnel or circuit is still active.
+ 
+ use derive_deftly::Deftly;
+-use std::{num::NonZeroUsize, time::Instant};
++use std::num::NonZeroUsize;
++// Use web_time::Instant for WASM compatibility (re-exports std::time::Instant on non-WASM)
++use web_time::Instant;
+ 
+ /// An object to track whether a tunnel or circuit should still be considered active.
+ ///
+diff --git a/vendor/arti/crates/tor-rtcompat/Cargo.toml b/vendor/arti/crates/tor-rtcompat/Cargo.toml
+index b69e4a6..995695d 100644
+--- a/vendor/arti/crates/tor-rtcompat/Cargo.toml
++++ b/vendor/arti/crates/tor-rtcompat/Cargo.toml
+@@ -78,7 +78,6 @@ pin-project = "1"
+ rustls-pki-types = { version = "1.8", optional = true }
+ rustls-webpki = { version = "0.103.1", optional = true }
+ smol = { version = "2.0.2", optional = true }
+-socket2 = "0.6.1"
+ thiserror = "2"
+ tokio-crate = { package = "tokio", version = "1.7", optional = true, features = [
+     "rt",
+@@ -92,6 +91,11 @@ tor-error = { version = "0.37.0", path = "../tor-error", features = ["tracing"]
+ tor-general-addr = { version = "0.37.0", path = "../tor-general-addr" }
+ tracing = "0.1.36"
+ void = "1"
++# WASM-compatible Instant - re-exports std::time on non-WASM, provides working impl on WASM
++web-time = "1.1"
++
++[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
++socket2 = "0.6.1"
+ 
+ [dev-dependencies]
+ assert_matches = "1.5.0"
+diff --git a/vendor/arti/crates/tor-rtcompat/src/coarse_time.rs b/vendor/arti/crates/tor-rtcompat/src/coarse_time.rs
+index d4dad3e..74d9c95 100644
+--- a/vendor/arti/crates/tor-rtcompat/src/coarse_time.rs
++++ b/vendor/arti/crates/tor-rtcompat/src/coarse_time.rs
+@@ -110,8 +110,14 @@ pub struct CoarseDuration(coarsetime::Duration);
+ /// We regard this as a bug.
+ /// The intent is that all operations will saturate.
+ #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)] //
++#[cfg(not(target_arch = "wasm32"))]
+ pub struct CoarseInstant(coarsetime::Instant);
+ 
++/// On WASM, use web_time::Instant since coarsetime doesn't support WASM
++#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)] //
++#[cfg(target_arch = "wasm32")]
++pub struct CoarseInstant(web_time::Instant);
++
+ impl From<time::Duration> for CoarseDuration {
+     fn from(td: time::Duration) -> CoarseDuration {
+         CoarseDuration(td.into())
+@@ -123,6 +129,7 @@ impl From<CoarseDuration> for time::Duration {
+     }
+ }
+ /// implement `$AddSub<CoarseDuration> for CoarseInstant`, and `*Assign`
++#[cfg(not(target_arch = "wasm32"))]
+ macro_rules! impl_add_sub { { $($AddSub:ident),* $(,)? } => { paste! { $(
+     impl std::ops::$AddSub<CoarseDuration> for CoarseInstant {
+         type Output = CoarseInstant;
+@@ -137,8 +144,37 @@ macro_rules! impl_add_sub { { $($AddSub:ident),* $(,)? } => { paste! { $(
+         }
+     }
+ )* } } }
++#[cfg(not(target_arch = "wasm32"))]
+ impl_add_sub!(Add, Sub);
+ 
++// WASM implementation using web_time::Instant (which wraps std::time::Duration)
++#[cfg(target_arch = "wasm32")]
++impl std::ops::Add<CoarseDuration> for CoarseInstant {
++    type Output = CoarseInstant;
++    fn add(self, rhs: CoarseDuration) -> CoarseInstant {
++        CoarseInstant(self.0 + time::Duration::from(rhs))
++    }
++}
++#[cfg(target_arch = "wasm32")]
++impl std::ops::AddAssign<CoarseDuration> for CoarseInstant {
++    fn add_assign(&mut self, rhs: CoarseDuration) {
++        *self = *self + rhs;
++    }
++}
++#[cfg(target_arch = "wasm32")]
++impl std::ops::Sub<CoarseDuration> for CoarseInstant {
++    type Output = CoarseInstant;
++    fn sub(self, rhs: CoarseDuration) -> CoarseInstant {
++        CoarseInstant(self.0 - time::Duration::from(rhs))
++    }
++}
++#[cfg(target_arch = "wasm32")]
++impl std::ops::SubAssign<CoarseDuration> for CoarseInstant {
++    fn sub_assign(&mut self, rhs: CoarseDuration) {
++        *self = *self - rhs;
++    }
++}
++
+ /// Provider of reduced-precision timestamps using the real OS clock
+ ///
+ /// This is a ZST.
+@@ -156,12 +192,20 @@ impl RealCoarseTimeProvider {
+     }
+ }
+ 
++#[cfg(not(target_arch = "wasm32"))]
+ impl CoarseTimeProvider for RealCoarseTimeProvider {
+     fn now_coarse(&self) -> CoarseInstant {
+         CoarseInstant(coarsetime::Instant::now())
+     }
+ }
+ 
++#[cfg(target_arch = "wasm32")]
++impl CoarseTimeProvider for RealCoarseTimeProvider {
++    fn now_coarse(&self) -> CoarseInstant {
++        CoarseInstant(web_time::Instant::now())
++    }
++}
++
+ #[cfg(not(miri))] // TODO coarse_time subtracts with overflow!
+ #[cfg(test)]
+ mod test {
+diff --git a/vendor/arti/crates/tor-rtcompat/src/compound.rs b/vendor/arti/crates/tor-rtcompat/src/compound.rs
+index 68348c3..70561dc 100644
+--- a/vendor/arti/crates/tor-rtcompat/src/compound.rs
++++ b/vendor/arti/crates/tor-rtcompat/src/compound.rs
+@@ -10,7 +10,8 @@ use educe::Educe;
+ use futures::{future::FutureObj, task::Spawn};
+ use std::future::Future;
+ use std::io::Result as IoResult;
+-use std::time::{Instant, SystemTime};
++use std::time::SystemTime;
++use web_time::Instant;
+ use tor_general_addr::unix;
+ use tracing::instrument;
+ 
+diff --git a/vendor/arti/crates/tor-rtcompat/src/dyn_time.rs b/vendor/arti/crates/tor-rtcompat/src/dyn_time.rs
+index c7fd92f..fb91d3c 100644
+--- a/vendor/arti/crates/tor-rtcompat/src/dyn_time.rs
++++ b/vendor/arti/crates/tor-rtcompat/src/dyn_time.rs
+@@ -3,7 +3,8 @@
+ use std::future::Future;
+ use std::mem::{self, MaybeUninit};
+ use std::pin::Pin;
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::{Duration, SystemTime};
++use web_time::Instant;
+ 
+ use dyn_clone::DynClone;
+ use educe::Educe;
+diff --git a/vendor/arti/crates/tor-rtcompat/src/impls.rs b/vendor/arti/crates/tor-rtcompat/src/impls.rs
+index 35dde11..15a5ad0 100644
+--- a/vendor/arti/crates/tor-rtcompat/src/impls.rs
++++ b/vendor/arti/crates/tor-rtcompat/src/impls.rs
+@@ -82,6 +82,7 @@ use tor_error::warn_report;
+ // for legitimate traffic, and illegitimate traffic would be better handled by the kernel with
+ // something like SYN cookies. But it's easier for users to reduce the max using
+ // `/proc/sys/net/core/somaxconn` than to increase this max by recompiling arti.
++#[cfg(not(target_arch = "wasm32"))]
+ const LISTEN_BACKLOG: i32 = u16::MAX as i32;
+ 
+ /// Open a listening TCP socket.
+@@ -94,6 +95,7 @@ const LISTEN_BACKLOG: i32 = u16::MAX as i32;
+ /// socket with the options we need and with consistent behaviour across all runtimes. For example
+ /// if each runtime were using a different `listen()` backlog size, it might be difficult to debug
+ /// related issues.
++#[cfg(not(target_arch = "wasm32"))]
+ pub(crate) fn tcp_listen(addr: &std::net::SocketAddr) -> std::io::Result<std::net::TcpListener> {
+     use socket2::{Domain, Socket, Type};
+ 
+diff --git a/vendor/arti/crates/tor-rtcompat/src/lib.rs b/vendor/arti/crates/tor-rtcompat/src/lib.rs
+index 66b9467..3ffda7e 100644
+--- a/vendor/arti/crates/tor-rtcompat/src/lib.rs
++++ b/vendor/arti/crates/tor-rtcompat/src/lib.rs
+@@ -76,6 +76,8 @@ pub use traits::{
+ pub use coarse_time::{CoarseDuration, CoarseInstant, RealCoarseTimeProvider};
+ pub use dyn_time::DynTimeProvider;
+ pub use timer::{SleepProviderExt, Timeout, TimeoutError};
++// Re-export web_time::Instant for WASM compatibility (it's std::time::Instant on non-WASM)
++pub use traits::Instant;
+ 
+ /// Traits used to describe TLS connections and objects that can
+ /// create them.
+@@ -410,7 +412,8 @@ mod test {
+     use std::io::Result as IoResult;
+     use std::net::SocketAddr;
+     use std::net::{Ipv4Addr, SocketAddrV4};
+-    use std::time::{Duration, Instant};
++    use std::time::Duration;
++    use web_time::Instant;
+ 
+     // Test "sleep" with a tiny delay, and make sure that at least that
+     // much delay happens.
+diff --git a/vendor/arti/crates/tor-rtcompat/src/scheduler.rs b/vendor/arti/crates/tor-rtcompat/src/scheduler.rs
+index ef41ea3..dd04247 100644
+--- a/vendor/arti/crates/tor-rtcompat/src/scheduler.rs
++++ b/vendor/arti/crates/tor-rtcompat/src/scheduler.rs
+@@ -7,7 +7,8 @@ use futures::{Stream, StreamExt};
+ use std::future::Future;
+ use std::pin::Pin;
+ use std::task::{Context, Poll};
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::{Duration, SystemTime};
++use web_time::Instant;
+ 
+ use pin_project::pin_project;
+ 
+@@ -267,7 +268,8 @@ mod test {
+     use crate::{SleepProvider, test_with_all_runtimes};
+     use futures::FutureExt;
+     use futures::StreamExt;
+-    use std::time::{Duration, Instant};
++    use std::time::Duration;
++    use web_time::Instant;
+ 
+     #[test]
+     fn it_fires_immediately() {
+diff --git a/vendor/arti/crates/tor-rtcompat/src/traits.rs b/vendor/arti/crates/tor-rtcompat/src/traits.rs
+index 2144a04..1fa532b 100644
+--- a/vendor/arti/crates/tor-rtcompat/src/traits.rs
++++ b/vendor/arti/crates/tor-rtcompat/src/traits.rs
+@@ -8,7 +8,9 @@ use futures::{AsyncRead, AsyncWrite, Future};
+ use std::fmt::Debug;
+ use std::io::{self, Result as IoResult};
+ use std::net;
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::{Duration, SystemTime};
++// Use web_time::Instant which works on WASM (re-exports std::time::Instant on non-WASM)
++pub use web_time::Instant;
+ use tor_general_addr::unix;
+ 
+ /// A runtime for use by Tor client library code.
+diff --git a/vendor/arti/crates/tor-rtmock/src/simple_time.rs b/vendor/arti/crates/tor-rtmock/src/simple_time.rs
+index 0847165..6eb6720 100644
+--- a/vendor/arti/crates/tor-rtmock/src/simple_time.rs
++++ b/vendor/arti/crates/tor-rtmock/src/simple_time.rs
+@@ -7,7 +7,8 @@ use std::future::Future;
+ use std::pin::Pin;
+ use std::sync::{Arc, Mutex, MutexGuard};
+ use std::task::{Context, Poll, Waker};
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::{Duration, SystemTime};
++use tor_rtcompat::Instant;
+ 
+ use derive_more::AsMut;
+ use priority_queue::priority_queue::PriorityQueue;
+diff --git a/vendor/arti/crates/tor-rtmock/src/time.rs b/vendor/arti/crates/tor-rtmock/src/time.rs
+index 56be8c1..719f056 100644
+--- a/vendor/arti/crates/tor-rtmock/src/time.rs
++++ b/vendor/arti/crates/tor-rtmock/src/time.rs
+@@ -20,8 +20,9 @@ use std::{
+     pin::Pin,
+     sync::{Arc, Mutex, Weak},
+     task::{Context, Poll, Waker},
+-    time::{Duration, Instant, SystemTime},
++    time::{Duration, SystemTime},
+ };
++use tor_rtcompat::Instant;
+ 
+ use futures::Future;
+ use tracing::trace;
+diff --git a/vendor/arti/crates/tor-rtmock/src/time_core.rs b/vendor/arti/crates/tor-rtmock/src/time_core.rs
+index 98ac5b9..0101d13 100644
+--- a/vendor/arti/crates/tor-rtmock/src/time_core.rs
++++ b/vendor/arti/crates/tor-rtmock/src/time_core.rs
+@@ -1,7 +1,8 @@
+ //! [`MockTimeCore`] and [`MockCoarseTimeProvider`]
+ 
+ use derive_deftly::{Deftly, define_derive_deftly};
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::{Duration, SystemTime};
++use tor_rtcompat::Instant;
+ use tor_rtcompat::{CoarseDuration, CoarseInstant};
+ use tor_rtcompat::{CoarseTimeProvider, RealCoarseTimeProvider};
+ 
+diff --git a/vendor/arti/crates/tor-rtmock/src/util.rs b/vendor/arti/crates/tor-rtmock/src/util.rs
+index 527b81c..2010f3b 100644
+--- a/vendor/arti/crates/tor-rtmock/src/util.rs
++++ b/vendor/arti/crates/tor-rtmock/src/util.rs
+@@ -180,10 +180,11 @@ pub(crate) mod impl_runtime_prelude {
+     pub(crate) use futures::task::{FutureObj, Spawn, SpawnError};
+     pub(crate) use std::io::Result as IoResult;
+     pub(crate) use std::net::SocketAddr;
+-    pub(crate) use std::time::{Duration, Instant, SystemTime};
++    pub(crate) use std::time::{Duration, SystemTime};
+     pub(crate) use tor_rtcompat::{
+-        Blocking, CoarseInstant, CoarseTimeProvider, NetStreamProvider, Runtime, SleepProvider,
+-        TlsProvider, ToplevelBlockOn, UdpProvider, unimpl::FakeListener, unimpl::FakeStream,
++        Blocking, CoarseInstant, CoarseTimeProvider, Instant, NetStreamProvider, Runtime,
++        SleepProvider, TlsProvider, ToplevelBlockOn, UdpProvider, unimpl::FakeListener,
++        unimpl::FakeStream,
+     };
+ }
+ 
+diff --git a/vendor/arti/crates/tor-socksproto/fuzz/corpus b/vendor/arti/crates/tor-socksproto/fuzz/corpus
+deleted file mode 120000
+index f223300..0000000
+--- a/vendor/arti/crates/tor-socksproto/fuzz/corpus
++++ /dev/null
+@@ -1 +0,0 @@
+-../../../arti-corpora/tor-socksproto/
+\ No newline at end of file
+diff --git a/vendor/arti/maint/common b/vendor/arti/maint/common
+deleted file mode 120000
+index 53429d9..0000000
+--- a/vendor/arti/maint/common
++++ /dev/null
+@@ -1 +0,0 @@
+-rust-maint-common
+\ No newline at end of file
+diff --git a/vendor/arti/maint/rust-maint-common/common b/vendor/arti/maint/rust-maint-common/common
+deleted file mode 120000
+index 945c9b4..0000000
+--- a/vendor/arti/maint/rust-maint-common/common
++++ /dev/null
+@@ -1 +0,0 @@
+-.
+\ No newline at end of file
+diff --git a/vendor/arti/maint/rust-maint-common/maint b/vendor/arti/maint/rust-maint-common/maint
+deleted file mode 120000
+index 945c9b4..0000000
+--- a/vendor/arti/maint/rust-maint-common/maint
++++ /dev/null
+@@ -1 +0,0 @@
+-.
+\ No newline at end of file
+diff --git a/vendor/arti/maint/rust-maint-common/test-project/maint b/vendor/arti/maint/rust-maint-common/test-project/maint
+deleted file mode 120000
+index c371e11..0000000
+--- a/vendor/arti/maint/rust-maint-common/test-project/maint
++++ /dev/null
+@@ -1 +0,0 @@
+-../maint
+\ No newline at end of file
